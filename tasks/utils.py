@@ -1,7 +1,10 @@
 def get_model_type(model_name: str) -> str:
     
     valid_model_types: list[str] = [
-        'gpt-4o-mini', 
+        'gpt-4o-mini',
+        'gpt-4.1-mini',
+        'gpt-4.1-nano',
+        'gpt-5.4-nano',
         'gemini-2.5-flash',
         'gemini-2.0-flash',
         'gemini-1.5-flash',

@@ -17,3 +17,24 @@ pddl:
   env_config_path: tasks/env_configs/pddl_config.yaml
   max_steps: 30
   few_shots_num: 1
+
+# single-turn QA / math benchmarks
+aime24:
+  env_config_path: tasks/env_configs/aime24_config.yaml
+  max_steps: 3
+  few_shots_num: 0
+
+aime25:
+  env_config_path: tasks/env_configs/aime25_config.yaml
+  max_steps: 3
+  few_shots_num: 0
+
+gpqa:
+  env_config_path: tasks/env_configs/gpqa_config.yaml
+  max_steps: 3
+  few_shots_num: 0
+
+mmlu_pro_eng:
+  env_config_path: tasks/env_configs/mmlu_pro_eng_config.yaml
+  max_steps: 3
+  few_shots_num: 0

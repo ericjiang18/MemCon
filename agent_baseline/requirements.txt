@@ -1,0 +1,34 @@
+# ── core ──────────────────────────────────────────────────────────────
+openai>=1.0
+python-dotenv
+tqdm
+class-registry
+datasets          # HuggingFace datasets
+huggingface_hub
+
+# ── agent-framework ──────────────────────────────────────────────────
+# Install from local source:  pip install -e agent-framework/python/packages/core
+# Or from PyPI (if published):
+# agent-framework-core
+
+# ── autogen ──────────────────────────────────────────────────────────
+# Install from local source:
+#   pip install -e autogen/python/packages/autogen-core
+#   pip install -e autogen/python/packages/autogen-agentchat
+#   pip install -e "autogen/python/packages/autogen-ext[openai]"
+# Or from PyPI:
+# autogen-agentchat
+# autogen-ext[openai]
+
+# ── langgraph ────────────────────────────────────────────────────────
+# Install from local source:
+#   pip install -e langgraph/libs/langgraph
+#   pip install -e langgraph/libs/prebuilt
+# Or from PyPI:
+# langgraph
+# langgraph-prebuilt
+langchain-openai
+langchain-core
+
+# ── lobster ──────────────────────────────────────────────────────────
+# cd lobster && npm install     (Node.js >= 18 required)

@@ -7,12 +7,16 @@ from .math_env import MathEnv, MathRecorder, MathEnvConfig
 from .pddl_env.pddl_env import PDDLEnv, PDDLRecorder, get_all_environment_configs
 
 
+MATH_TASKS = {'math', 'aime24', 'aime25', 'gpqa', 'mmlu_pro_eng'}
+
 def _get_envs():
     """Lazy env registry to avoid importing SciWorld when not needed."""
     envs = {
         'alfworld': AlfworldEnv,
         'pddl': PDDLEnv,
     }
+    for t in MATH_TASKS:
+        envs[t] = MathEnv
     try:
         from .sciworld_env import SciworldEnv
         envs['sciworld'] = SciworldEnv
@@ -26,6 +30,8 @@ def _get_recorders():
         'alfworld': AlfworldRecorder,
         'pddl': PDDLRecorder,
     }
+    for t in MATH_TASKS:
+        recorders[t] = MathRecorder
     try:
         from .sciworld_env import SciworldRecorder
         recorders['sciworld'] = SciworldRecorder
@@ -131,6 +137,42 @@ def get_task(task: str) -> list[dict]:
                                 'task_type': problem_data.get('type', 'math')
                             })
         # Limit for testing if needed, or return all
+        return tasks
+
+    elif task in MATH_TASKS:
+        import json
+        data_map = {
+            'math': 'data/math_test',
+            'aime24': 'data/qa_test/aime_2024.jsonl',
+            'aime25': 'data/qa_test/aime_2025.jsonl',
+            'gpqa': 'data/qa_test/gpqa_diamond.jsonl',
+            'mmlu_pro_eng': 'data/qa_test/mmlu_pro_eng.jsonl',
+        }
+        data_path = data_map.get(task, 'data/math_test')
+        tasks = []
+
+        def _load_jsonl(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        item = json.loads(line)
+                        if not item.get('problem'):
+                            continue
+                        tasks.append({
+                            'task': item['problem'][:120],
+                            'env_name': task,
+                            'env_kwargs': {'problem': item, 'config': task},
+                            'task_type': item.get('source', task),
+                        })
+
+        if os.path.isfile(data_path):
+            _load_jsonl(data_path)
+        elif os.path.isdir(data_path):
+            for fn in sorted(os.listdir(data_path)):
+                if fn.endswith('.jsonl'):
+                    _load_jsonl(os.path.join(data_path, fn))
+
+        print(f"Loaded {len(tasks)} {task} tasks from {data_path}")
         return tasks
 
     elif task == 'pddl':

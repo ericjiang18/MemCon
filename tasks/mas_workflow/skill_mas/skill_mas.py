@@ -28,72 +28,35 @@ NOTE:
 WINDOW_SIZE = 7
 MAX_CONSECUTIVE_THINKS = 2
 
-_ACTION_VERBS = frozenset([
-    # ALFWorld
-    'go', 'take', 'open', 'close', 'put', 'clean', 'heat', 'cool',
-    'use', 'look', 'examine', 'think', 'move', 'inventory', 'check',
-    'pick', 'drop',
-    # PDDL (barman, blocksworld, etc.)
-    'right', 'left', 'fill-shot', 'refill-shot', 'empty-shot',
-    'clean-shot', 'pour-shot-to-clean-shaker', 'pour-shot-to-used-shaker',
-    'empty-shaker', 'clean-shaker', 'shake', 'pour-shaker-to-shot',
-    'unstack', 'stack', 'pick-up', 'put-down',
-    # SciWorld
-    'pour', 'mix', 'stir', 'activate', 'connect', 'focus',
-    'read', 'wait', 'teleport',
-])
-
-
 def _extract_action(raw_response: str) -> str:
     """
     Extract a single executable action from a potentially verbose LLM response.
-
-    Handles:
-    - Clean single-line actions: "go to desk 1"
-    - Few-shot continuation: "OK.\\n> think: I need to..."
-    - Markdown/prefix: "- go to desk 1", "> go to desk 1"
-    - Action label: "Action: go to desk 1"
-    - PDDL actions: "right grasp shot1", "fill-shot shot1 ..."
+    Strips common prefixes and returns the first non-trivial line.
+    The environment's process_action handles validation.
+    For math/QA tasks, returns the full response so the env can extract the answer.
     """
     if not raw_response or not raw_response.strip():
         return "look"
 
     import re
 
+    if re.search(r'\\boxed\{|Answer:\s*[A-J]|the answer is', raw_response, re.IGNORECASE):
+        return raw_response.strip()
+
     def _clean_line(line: str) -> str:
-        """Strip common prefixes: >, -, *, bullets, numbering, backticks."""
         line = line.strip()
         line = re.sub(r'^[>\-•*`]+\s*', '', line)
         line = re.sub(r'^\d+[.)]\s*', '', line)
         return line.strip()
 
-    def _first_word(line: str) -> str:
-        parts = line.split()
-        return parts[0].lower().rstrip(':') if parts else ''
-
     lines = raw_response.strip().split('\n')
 
-    # Pass 1: check first line (common case — model outputs just the action)
-    first_clean = _clean_line(lines[0])
-    if _first_word(first_clean) in _ACTION_VERBS:
-        return first_clean
-
-    # Pass 2: look for "Action: ..." label
     action_match = re.search(r'(?:Action|OUTPUT|COMMAND)\s*:\s*(.+)', raw_response, re.IGNORECASE)
     if action_match:
         candidate = _clean_line(action_match.group(1).split('\n')[0])
         if candidate:
             return candidate
 
-    # Pass 3: scan all lines for one starting with a known action verb
-    for line in lines:
-        cleaned = _clean_line(line)
-        if not cleaned or cleaned.upper() in ('OK.', 'OK', ''):
-            continue
-        if _first_word(cleaned) in _ACTION_VERBS:
-            return cleaned
-
-    # Pass 4: return first non-trivial line (let the env validate)
     for line in lines:
         cleaned = _clean_line(line)
         if cleaned and cleaned.upper() not in ('OK.', 'OK', ''):

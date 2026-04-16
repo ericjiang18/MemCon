@@ -185,15 +185,12 @@ class SkillConditionedValueFunction:
             if key in self.q_table:
                 entry = self.q_table[key]
                 score = entry.q_value
-                # UCB exploration: bonus for under-explored options
-                if entry.total_uses > 0:
+                if entry.total_uses >= 1: # 3:
                     score += self.exploration_bonus * np.sqrt(
                         np.log(self.update_count + 1) / entry.total_uses
                     )
-                else:
-                    score += self.exploration_bonus * 2.0
             else:
-                score = 0.5 + self.exploration_bonus * 2.0
+                score = 0.1 if sid == NO_SKILL else 0.0
 
             if score > best_score:
                 best_score = score

@@ -1,0 +1,3 @@
+env:
+  data_dir: data/qa_test/aime_2024.jsonl
+  split: test

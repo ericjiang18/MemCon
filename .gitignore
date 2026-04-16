@@ -10,10 +10,21 @@ build/
 
 # Data & DB (too large for git)
 .db/
+.db_gmem_bench/
+data/code_test/livecodebench_test.jsonl
 data/alfworld/
 data/fever/
 data/pddl/
 data/ScreenSpot-Pro/
+
+# Experiment outputs (regenerable)
+results/
+nohup.out
+
+# Vendored frameworks (install via pip)
+agent-framework/
+langgraph/
+lobster/
 
 # IDE
 .vscode/

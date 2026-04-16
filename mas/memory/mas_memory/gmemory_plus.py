@@ -32,7 +32,7 @@ class GMemoryPlusConfig:
     
     use_llm_for_goal_parsing: bool = False
     
-    min_cluster_size: int = 2
+    min_cluster_size: int = 3
     skill_similarity_threshold: float = 0.65
 
 

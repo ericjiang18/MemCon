@@ -42,7 +42,7 @@ AI_STUDIO_API_URL = os.getenv("AI_STUDIO_API_URL", "https://idealab-external.ali
 ALIYUN_API_KEY = os.getenv("ALIYUN_API_KEY", "")
 DASHSCOPE_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
-MAX_RETRIES = 3
+MAX_RETRIES = 6
 
 
 completion_tokens, prompt_tokens = 0, 0
@@ -105,16 +105,22 @@ class GPTChat(LLM):
         max_retries = 5  
         wait_time = 1 
 
+        _use_new_param = any(tag in self.model_name for tag in ("gpt-5", "o3", "o4"))
+
         for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,  
+                params = dict(
+                    model=self.model_name,
                     messages=messages,
-                    max_tokens=max_tokens or MAX_TOKEN,
                     temperature=temperature or TEMPERATURE,
                     n=num_comps or NUM_COMPS,
-                    stop=stop_strs
+                    stop=stop_strs,
                 )
+                if _use_new_param:
+                    params["max_completion_tokens"] = max_tokens or MAX_TOKEN
+                else:
+                    params["max_tokens"] = max_tokens or MAX_TOKEN
+                response = self.client.chat.completions.create(**params)
 
                 answer = response.choices[0].message.content
                 prompt_tokens += response.usage.prompt_tokens
@@ -264,7 +270,7 @@ class GeminiChat(LLM):
     """
 
     THINKING_TOKEN_FLOOR = 4096
-    MIN_REQUEST_INTERVAL = 1.0
+    MIN_REQUEST_INTERVAL = 3.0
 
     def __init__(self, model_name: str = "gemini-2.5-flash", api_key: str = None):
         super().__init__(model_name=model_name)
@@ -334,6 +340,104 @@ class GeminiChat(LLM):
                     time.sleep(wait)
                 else:
                     print(f"Gemini API error (attempt {attempt + 1}): {error_message}")
+                    if attempt == MAX_RETRIES - 1:
+                        return ""
+                    time.sleep(3 * (attempt + 1))
+
+        return ""
+
+
+# ================================ Claude LLM (Anthropic) ================================
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+class ClaudeChat(LLM):
+    """
+    Claude LLM using Anthropic's native API.
+    Supports models like claude-3-7-sonnet, claude-3-5-sonnet, claude-3-opus, etc.
+    """
+
+    MIN_REQUEST_INTERVAL = 1.0
+
+    def __init__(self, model_name: str = "claude-3-7-sonnet-20250219", api_key: str = None):
+        super().__init__(model_name=model_name)
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("anthropic package is required for Claude models. Install via: pip install anthropic")
+        self.api_key = api_key or ANTHROPIC_API_KEY
+        if not self.api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY env var is required for Claude models. "
+                "Set it via: export ANTHROPIC_API_KEY=your_key"
+            )
+        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self._last_call_time = 0.0
+        print(f"ClaudeChat initialized with model={model_name}")
+
+    def __call__(
+        self,
+        messages: List[Message],
+        temperature: float = TEMPERATURE,
+        max_tokens: int = MAX_TOKEN,
+        stop_strs: Optional[List[str]] = None,
+        num_comps: int = NUM_COMPS,
+    ) -> str:
+        global prompt_tokens, completion_tokens
+
+        effective_max = max(max_tokens or MAX_TOKEN, 4096)
+
+        system_text = ""
+        api_messages = []
+        for msg in messages:
+            if msg.role == "system":
+                system_text += msg.content + "\n"
+            else:
+                api_messages.append({"role": msg.role, "content": msg.content})
+
+        if not api_messages:
+            api_messages = [{"role": "user", "content": "Hello"}]
+
+        elapsed = time.time() - self._last_call_time
+        if elapsed < self.MIN_REQUEST_INTERVAL:
+            time.sleep(self.MIN_REQUEST_INTERVAL - elapsed)
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                kwargs = dict(
+                    model=self.model_name,
+                    messages=api_messages,
+                    max_tokens=effective_max,
+                    temperature=temperature,
+                )
+                if system_text.strip():
+                    kwargs["system"] = system_text.strip()
+                if stop_strs:
+                    kwargs["stop_sequences"] = stop_strs
+
+                response = self.client.messages.create(**kwargs)
+                answer = response.content[0].text if response.content else None
+
+                if response.usage:
+                    prompt_tokens += response.usage.input_tokens
+                    completion_tokens += response.usage.output_tokens
+
+                self._last_call_time = time.time()
+
+                if answer is None:
+                    if attempt < MAX_RETRIES - 1:
+                        print(f"Claude returned None, retrying...")
+                    continue
+                return answer
+
+            except Exception as e:
+                error_message = str(e)
+                if "429" in error_message or "rate" in error_message.lower() or "overloaded" in error_message.lower():
+                    wait = 5 * (attempt + 1)
+                    print(f"Claude rate-limited, waiting {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"Claude API error (attempt {attempt + 1}): {error_message}")
                     if attempt == MAX_RETRIES - 1:
                         return ""
                     time.sleep(3 * (attempt + 1))

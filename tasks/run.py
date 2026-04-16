@@ -14,7 +14,7 @@ from mas.agents import Agent
 from mas.module_map import module_map
 from mas.reasoning import ReasoningBase
 from mas.memory import MASMemoryBase
-from mas.llm import LLMCallable, GPTChat, QwenChat, GeminiChat, get_price
+from mas.llm import LLMCallable, GPTChat, QwenChat, GeminiChat, ClaudeChat, get_price
 from mas.mas import MetaMAS
 from mas.utils import EmbeddingFunc
 
@@ -80,6 +80,9 @@ def get_llm_model(model_type: str) -> LLMCallable:
     elif model_type.lower().startswith('gemini'):
         print(f"Using Gemini model: {model_type}")
         return GeminiChat(model_name=model_type)
+    elif model_type.lower().startswith('claude'):
+        print(f"Using Claude model: {model_type}")
+        return ClaudeChat(model_name=model_type)
     else:
         print(f"Using OpenAI model: {model_type}")
         return GPTChat(model_name=model_type)
@@ -141,7 +144,7 @@ if __name__ == '__main__':
     random.seed(42)
 
     parser = argparse.ArgumentParser(description='Run tasks with specified modules.')
-    parser.add_argument('--task', type=str, choices=['alfworld', 'sciworld', 'pddl', 'math'])
+    parser.add_argument('--task', type=str, choices=['alfworld', 'sciworld', 'pddl', 'math', 'aime24', 'aime25', 'gpqa', 'mmlu_pro_eng'])
     parser.add_argument('--mas_type', type=str, choices=['autogen', 'macnet', 'dylan', 'skill-mas', 'skill', 'gcn', 'goal-gcn', 'goalrl'])
     parser.add_argument('--mas_memory', type=str, default='none', help='Specify mas memory module')
     parser.add_argument('--reasoning', type=str, default='io', help='Specify reasoning module')

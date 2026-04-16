@@ -1,189 +1,165 @@
-# Skill-Conditioned RL with Evolving Memory for LLM Agents
+# Hierarchical Memory Framework with Model Predictive Control for Agentic Systems
 
-A **test-time learning** framework for LLM-based autonomous agents. Instead of retraining, agents improve across tasks through three progressively deeper layers of memory that accumulate experience, distill insights, and discover reusable skills.
+This repository implements a **hierarchical memory framework (HMF)** that unifies three complementary memory substrates — **cache**, **retrieval**, and **skill** — orchestrated by a **Model Predictive Control (MPC)** layer. It also includes the baseline **Skill-Conditioned RL** and **G-Memory** systems for comparison.
 
-## Three-Layer Learning Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                 │
-│  Layer 1: Experience Memory (Immediate)                         │
-│  ├── Successful trajectory storage + vector retrieval           │
-│  │   (GMemory Task Layer)                                       │
-│  ├── ExpRAG: lightweight experience retrieval with              │
-│  │   embedding similarity + goal-type boosting                  │
-│  └── Effect: Task N succeeds → Task N+1 can directly            │
-│      reference the execution pattern                            │
-│                                                                 │
-│  Layer 2: Insight Evolution (Mid-term Accumulation)             │
-│  ├── LLM Refine: one post-task LLM call produces               │
-│  │   structured insight per task                                │
-│  ├── Insight scoring: success +0.5, failure -1                  │
-│  │   (auto-prune low-scoring rules)                             │
-│  ├── Periodic LLM merge/prune to consolidate insights           │
-│  └── Effect: Distill general rules from many experiences        │
-│                                                                 │
-│  Layer 3: Skill Emergence + RL Selection (Long-term)            │
-│  ├── Skill Miner: cluster successful trajectories →             │
-│  │   extract reusable parameterized procedures                  │
-│  ├── Skill-Conditioned RL: Q(goal_type, skill_id)               │
-│  │   with UCB exploration to select the best skill              │
-│  ├── LLM-driven skill step evolution on failure                 │
-│  └── Effect: Automatically discover and optimize                │
-│      procedural knowledge ("how to do it")                      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### How the Layers Interact
+## Architecture
 
 ```
-Task Start
-  │
-  ▼
-┌──────────────────────────────────────┐
-│  Retrieval Phase (one-time)          │
-│  Layer 1 → past trajectories         │
-│  Layer 2 → insight rules             │
-│  Layer 3 → skills + RL skill select  │
-│         ↓ all injected into prompt   │
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│  Execution: Think-Act Loop           │
-│  • System prompt set once            │
-│  • Sliding window (last 7 steps)     │
-│  • Skill-guided action hints         │
-│  • Proactive loop detection          │
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│  Post-Task Learning                  │
-│  Layer 1 → store trajectory + ExpRAG │
-│  Layer 2 → LLM Refine → insight     │
-│  Layer 3 → RL Q-update + skill mine  │
-└──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     MPC Controller (Predictive Control)                  │
+│                                                                         │
+│  At each step, optimizes over horizon H to decide:                      │
+│  • Reuse cached results     • Retrieve past experiences                 │
+│  • Invoke stored skill      • Fresh LLM generation                     │
+│  • Consolidate into skills  • Evict stale memory                       │
+│  Under constraints: token cost ≤ B_token, latency ≤ B_latency          │
+│                                                                         │
+│          ┌──────────────────┼──────────────────┐                       │
+│          ▼                  ▼                  ▼                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                 │
+│  │ Cache Memory  │  │  Retrieval   │  │ Skill Memory │                 │
+│  │ LRU+TTL, O(1)│  │  Semantic    │  │  Procedural  │                 │
+│  │ hash + embed  │  │  vectors +   │  │  distillation│                 │
+│  │ soft match    │  │  importance  │  │  + evolution  │                 │
+│  └──────────────┘  └──────────────┘  └──────────────┘                 │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
-
-## Key Components
-
-| Component | Layer | Description |
-|-----------|-------|-------------|
-| **G-Memory Task Layer** | 1 | Graph-based trajectory storage with k-hop retrieval and vector similarity |
-| **ExpRAG** | 1 | Lightweight experience store with embedding retrieval, goal-type boosting, and success weighting |
-| **LLM Refine** | 2 | Post-task LLM call that extracts INSIGHT, SKILL_UPDATE, and AVOID rules |
-| **Insight Manager** | 2 | Scored rule system with periodic LLM-driven merge/prune |
-| **Skill Miner** | 3 | Clusters successful trajectories → LLM synthesizes parameterized skills with goal patterns |
-| **Skill-Conditioned RL** | 3 | Tabular Q(goal_type, skill_id) with UCB exploration bonus for skill selection |
-| **Skill MAS** | Exec | Think-Act-Refine loop with sliding window prompts and loop detection |
-
-## Supported Environments
-
-| Environment | Benchmark | Task Types |
-|------------|-----------|------------|
-| **ALFWorld** | Household text simulation | put, clean, heat, cool, examine, puttwo |
-| **PDDL** | Classical planning | blocksworld, barman, gripper, tyreworld |
-| **Math** | Mathematical reasoning | MATH-500, AIME |
-| **SciWorld** | Science experiments | Various science tasks |
-
-## Installation
-
-```bash
-git clone https://github.com/ericjiang18/Goal-RL-Mem-Evo.git
-cd Goal-RL-Mem-Evo
-pip install -r requirements.txt
-```
-
-### Environment-specific setup
-
-```bash
-# ALFWorld
-pip install alfworld
-export ALFWORLD_DATA=~/.cache/alfworld
-alfworld-download
-
-# SciWorld
-pip install scienceworld
-```
-
-## Configuration
-
-```bash
-# OpenAI
-export OPENAI_API_KEY="your-key"
-export OPENAI_API_BASE="https://api.openai.com/v1"
-
-# Gemini (optional)
-export GOOGLE_API_KEY="your-key"
-```
-
-## Quick Start
-
-```bash
-# ALFWorld
-bash scripts/run_alfworld_gpt4omini.sh      # GPT-4o-mini
-bash scripts/run_alfworld_gemini.sh          # Gemini 2.5 Flash
-
-# PDDL Planning
-bash scripts/run_pddl_gpt4omini.sh
-bash scripts/run_pddl_gemini.sh
-
-# Math Reasoning
-bash scripts/run_math500_gpt4omini.sh
-bash scripts/run_math500_gemini.sh
-
-# SciWorld
-bash scripts/run_sciworld_gpt4omini.sh
-bash scripts/run_sciworld_gemini.sh
-```
-
-### Command-line Options
-
-```bash
-python3 tasks/run.py \
-    --task alfworld \           # alfworld | pddl | math | sciworld
-    --mas_type skill-mas \      # Skill MAS execution loop
-    --mas_memory skill-rl \     # Skill-Conditioned RL + ExpRAG + LLM Refine
-    --model gpt-4o-mini \       # gpt-4o-mini | gemini-2.5-flash | etc.
-    --reasoning io \            # Reasoning module
-    --max_trials 30 \           # Max steps per task
-    --successful_topk 1 \       # Trajectories to retrieve from Layer 1
-    --insights_topk 3           # Insights to retrieve from Layer 2
-```
-
-## Token Efficiency
-
-Compared to standard ReAct agents that include full history in every prompt:
-
-- **System prompt** (few-shots, insights, skills): set **once** per task
-- **Step prompt**: sliding window of last 7 action-observation pairs
-- **Think isolation**: think actions excluded from sliding window
-- **LLM Refine**: single compact call (~300 tokens) per task for Layer 2 learning
 
 ## Project Structure
 
 ```
-├── mas/
-│   ├── llm.py                      # LLM backends (OpenAI, Gemini, Qwen)
-│   ├── module_map.py               # Module registry
-│   └── memory/mas_memory/
-│       ├── GMemory.py              # Layer 1: Graph memory + Layer 2: Insights
-│       ├── gmemory_plus.py         # G-Memory++ (goal module + skill integration)
-│       ├── skill_memory.py         # Integration hub: RL + ExpRAG + LLM Refine
-│       ├── skill_rl.py             # Layer 3: Skill-Conditioned RL (Q-table)
-│       ├── skill_miner.py          # Layer 3: Skill extraction from clusters
-│       └── goal_module.py          # Goal parsing (StructuredGoal)
-├── tasks/
-│   ├── run.py                      # Main entry point
-│   ├── mas_workflow/
-│   │   ├── skill_mas/skill_mas.py  # Execution loop (Think-Act-Refine)
-│   │   └── format.py              # Prompt construction
-│   ├── envs/                       # Environment implementations
-│   └── prompts/                    # Task-specific prompts
-└── scripts/                        # Run scripts for each benchmark
+├── hmf/                        # Hierarchical Memory Framework (main contribution)
+│   ├── config.py               #   Central configuration
+│   ├── memory/                 #   Three memory substrates
+│   │   ├── cache_memory.py     #     LRU+TTL cache with semantic soft-match
+│   │   ├── retrieval_memory.py #     Importance-weighted vector store
+│   │   └── skill_memory.py     #     Procedural knowledge + trajectory distillation
+│   ├── mpc/                    #   Model Predictive Control layer
+│   │   ├── controller.py       #     Rolling-horizon optimizer (heuristic + LLM scoring)
+│   │   ├── cost_model.py       #     Multi-objective: α·token + β·latency + γ·uncertainty - δ·utility
+│   │   └── state.py            #     Joint memory + task state tracking
+│   ├── agent/                  #   Orchestration layer
+│   │   ├── hmf_agent.py        #     Full task lifecycle management
+│   │   └── trajectory.py       #     Step-by-step execution traces
+│   ├── integrations/           #   Framework adapters
+│   │   ├── mas_hmf_memory.py   #     MASMemoryBase adapter (for tasks/run.py)
+│   │   ├── langgraph_hmf.py    #     LangGraph + HMF runner
+│   │   ├── langgraph_gmemory.py#     LangGraph + G-Memory runner
+│   │   ├── agent_framework_hmf.py #  Agent-Framework + HMF runner
+│   │   └── lobster_hmf.py      #     Lobster + HMF runner
+│   └── evaluation/             #   Extended metrics (token efficiency, cache hits, etc.)
+│
+├── mas/                        # Core multi-agent system framework
+│   ├── llm.py                  #   LLM backends (OpenAI, Gemini, Qwen, Claude)
+│   ├── module_map.py           #   Registry: memory name → class
+│   ├── memory/mas_memory/      #   Baseline memory implementations
+│   │   ├── GMemory.py          #     G-Memory (graph-based, Chroma + NetworkX)
+│   │   ├── gmemory_plus.py     #     G-Memory++ (goal module + skill mining)
+│   │   ├── skill_memory.py     #     Skill-Conditioned RL + ExpRAG + LLM Refine
+│   │   ├── skill_rl.py         #     Q(goal_type, skill_id) with UCB
+│   │   ├── skill_miner.py      #     FINCH clustering → LLM skill extraction
+│   │   └── goal_module.py      #     Goal parsing
+│   └── agents/, reasoning/, tools/
+│
+├── tasks/                      # Task runner and environments
+│   ├── run.py                  #   Main entry point
+│   ├── configs.yaml            #   Global configuration
+│   ├── envs/                   #   ALFWorld, PDDL, SciWorld, Math/QA environments
+│   ├── mas_workflow/           #   SkillMAS execution loop (Think-Act-Refine)
+│   └── prompts/                #   Task-specific prompt templates
+│
+├── agent_baseline/             # Multi-framework benchmark harness
+│   ├── run_benchmark.py        #   Unified benchmark entry
+│   ├── runners/                #   LangGraph / AutoGen / Lobster + HMF variants
+│   └── dataset/                #   Dataset loaders and prompt registries
+│
+├── scripts/
+│   ├── hmf/                    #   HMF experiment scripts (comparison, per-benchmark)
+│   ├── legacy/                 #   Original gemini/claude scripts (Skill-RL baseline)
+│   ├── clean_memory.sh         #   Utility: wipe .db/
+│   └── download_qa_data.py     #   Download AIME/GPQA/MMLU-Pro from HuggingFace
+│
+├── data/                       #   Benchmark data (qa_test, math_test, pddl, humaneval)
+├── configs/                    #   LLM configuration
+└── results/                    #   Experiment outputs
 ```
+
+## Quick Start
+
+### Setup
+
+```bash
+# Create and activate conda environment
+conda create -n hmf python=3.12 -y
+conda activate hmf
+
+# Install dependencies
+pip install -r hmf/requirements.txt
+
+# For ALFWorld
+pip install alfworld && alfworld-download
+
+# For SciWorld
+pip install scienceworld
+```
+
+### Configuration
+
+```bash
+# Set in .env or export
+export OPENAI_API_KEY="your-key"
+export OPENAI_API_BASE="https://api.openai.com/v1"
+```
+
+### Running Experiments
+
+```bash
+# ALFWorld: three-way comparison (empty vs g-memory vs hmf)
+bash scripts/hmf/run_alfworld_comparison.sh
+
+# Individual benchmarks with HMF memory
+bash scripts/hmf/run_hmf_alfworld.sh
+bash scripts/hmf/run_hmf_pddl.sh
+bash scripts/hmf/run_hmf_aime25.sh
+bash scripts/hmf/run_hmf_gpqa.sh
+
+# Direct command
+python3 tasks/run.py \
+    --task alfworld \
+    --mas_type skill-mas \
+    --mas_memory hmf \          # hmf | g-memory | skill-rl | empty
+    --model gpt-4.1-mini \
+    --max_trials 30
+```
+
+### Available Memory Backends
+
+| `--mas_memory` | System | Description |
+|----------------|--------|-------------|
+| `empty` | No memory | Baseline with no cross-task memory |
+| `g-memory` | G-Memory | Graph-based hierarchical memory (Chroma + NetworkX) |
+| `skill-rl` | Skill-Conditioned RL | Q-learning skill selection + ExpRAG + LLM Refine |
+| `hmf` | **HMF (ours)** | Cache + Retrieval + Skill + MPC controller |
+
+## Supported Benchmarks
+
+| Benchmark | Type | Tasks | Via |
+|-----------|------|-------|----|
+| ALFWorld | Household interaction | 134 | `tasks/run.py` |
+| PDDL | Classical planning | 120 | `tasks/run.py` |
+| SciWorld | Science experiments | varies | `tasks/run.py` |
+| AIME 2024/2025 | Math competition | 30 | `tasks/run.py` |
+| GPQA | Graduate-level QA | varies | `tasks/run.py` |
+| MMLU-Pro | Multi-domain knowledge | varies | `tasks/run.py` |
+| HumanEval | Code generation | 164 | `agent_baseline/` |
+
+## Related Work
+
+- **LLMPC** — LLM as implicit cost-function optimizer for predictive control ([arXiv:2501.02486](https://arxiv.org/abs/2501.02486))
+- **MemP** — Procedural memory with step-by-step abstractions ([arXiv:2508.06433](https://arxiv.org/abs/2508.06433))
+- **ProcMEM** — Skill-MDP with semantic gradients and PPO Gate ([arXiv:2602.01869](https://arxiv.org/abs/2602.01869))
+- **MemSkill** — Learnable memory operations with closed-loop skill evolution ([arXiv:2602.02474](https://arxiv.org/abs/2602.02474))
+- **G-Memory** — Graph-based hierarchical memory for MAS ([arXiv:2506.07398](https://arxiv.org/abs/2506.07398))
 
 ## License
 

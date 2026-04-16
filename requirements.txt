@@ -14,6 +14,7 @@ matplotlib==3.10.3
 networkx==3.3
 nltk==3.9.1
 numpy==2.2.5
+anthropic>=0.39.0
 openai==1.78.1
 Pillow==11.2.1
 python-dotenv==1.1.0

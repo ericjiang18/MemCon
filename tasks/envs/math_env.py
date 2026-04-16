@@ -66,15 +66,26 @@ class MathEnv(BaseEnv):
         if 'env_kwargs' in configs and 'problem' in configs['env_kwargs']:
             self.current_problem = configs['env_kwargs']['problem']
         else:
-             # Fallback to random if no specific problem provided
             self.current_problem = random.choice(self.problems)
             
         self.steps_taken = 0
         self.done = False
         self.total_reward = 0.0
-        
-        task_main = f"Solve the following math problem:\n{self.current_problem['problem']}"
-        task_description = f"Type: {self.current_problem.get('type', 'math')}, Level: {self.current_problem.get('level', 'unknown')}"
+
+        choices = self.current_problem.get('choices', [])
+        if choices:
+            option_str = "\n".join(
+                f"{chr(65+i)}. {opt}" for i, opt in enumerate(choices)
+            )
+            task_main = (
+                f"Answer the following question by selecting the correct option.\n\n"
+                f"Question: {self.current_problem['problem']}\n\n"
+                f"Options:\n{option_str}"
+            )
+        else:
+            task_main = f"Solve the following math problem:\n{self.current_problem['problem']}"
+
+        task_description = f"Source: {self.current_problem.get('source', 'unknown')}"
         return task_main, task_description
 
     def reset(self) -> str:
@@ -140,17 +151,21 @@ class MathEnv(BaseEnv):
         return self.total_reward, self.done, ""
 
     def _extract_answer(self, text: str) -> Optional[str]:
-        """Extract answer from text using common patterns."""
-        # Pattern 1: \boxed{answer} - Handle at least one level of nested braces (like \frac{a}{b})
+        """Extract answer from text. Handles both MC letters and open-ended math."""
+        is_mc = bool(self.current_problem and self.current_problem.get('choices'))
+
+        if is_mc:
+            match = re.search(r'(?:answer is|Answer:?)\s*\(?([A-J])\)?', text, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+            match = re.search(r'\b([A-J])\b(?!.*\b[A-J]\b)', text)
+            if match:
+                return match.group(1).upper()
+            return None
+
         match = re.search(r'\\boxed\{((?:[^{}]|\{[^{}]*\})*)\}', text)
         if match:
-            # Special check to ensure we didn't clip a fraction off
             res = match.group(1).strip()
-            # If we matched a \frac but cut off the second bracket, try greedy match up to the last }
-            # But ONLY if the original match target itself had unbalanced brackets. 
-            # The regex `(?:[^{}]|\{[^{}]*\})*` handles 1 level of nesting perfectly. 
-            # We only need the greedy fallback if there are 2+ levels, e.g. \boxed{\frac{1}{2^{x}}}
-            # Actually, `res.count('{') > res.count('}')` ensures it was clipped.
             if res.count('{') > res.count('}'):
                 greedy_match = re.search(r'\\boxed\{(.*)\}', text, re.DOTALL)
                 if greedy_match:
@@ -160,38 +175,35 @@ class MathEnv(BaseEnv):
                     return greedy_res.strip()
             return res
 
-            
-        # Pattern 2: Answer: answer
-        match = re.search(r'(?:Answer|runs|is):?\s*\\?\[?(.*?)(?:\\]|$)', text, re.IGNORECASE | re.DOTALL)
+        match = re.search(r'(?:answer is|The answer is|Answer:?)\s*([^\n.]+)', text, re.IGNORECASE)
         if match:
             return match.group(1).strip()
-             
+
         return None
         
     def _check_answer(self, prediction: str, ground_truth: str) -> bool:
         """Robustly check if prediction matches ground truth."""
+        is_mc = bool(self.current_problem and self.current_problem.get('choices'))
+        if is_mc:
+            return prediction.strip().upper() == str(ground_truth).strip().upper()
+
         def normalize(s):
-            # Remove spaces, latex format nuances if needed
             s = str(s).lower().strip()
-            s = s.replace(' ', '')
-            s = s.replace('$', '')
+            s = s.replace(' ', '').replace('$', '').replace(',', '')
             return s
             
         norm_pred = normalize(prediction)
         norm_gt = normalize(ground_truth)
         
-        # 1. Exact match
         if norm_pred == norm_gt:
             return True
             
-        # 2. Try float arithmetic
         try:
             if abs(float(norm_pred) - float(norm_gt)) < 1e-6:
                 return True
         except ValueError:
             pass
             
-        # 3. Try SymPy symbolic equivalence
         try:
             import sympy
             expr_pred = sympy.sympify(norm_pred)
