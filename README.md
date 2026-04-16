@@ -1,87 +1,108 @@
-# Hierarchical Memory Framework with Model Predictive Control for Agentic Systems
+# MemCon: Memory as a Controlled Process for Agentic Systems
 
-This repository implements a **hierarchical memory framework (HMF)** that unifies three complementary memory substrates — **cache**, **retrieval**, and **skill** — orchestrated by a **Model Predictive Control (MPC)** layer. It also includes the baseline **Skill-Conditioned RL** and **G-Memory** systems for comparison.
+**MemCon** models agent memory operations as a Markov Decision Process and learns an online policy to control *when*, *what*, and *how much* to retrieve, encode, consolidate, and forget. It is **backend-agnostic** — wrapping any existing memory system (G-Memory, vector stores, etc.) and learning to use it better through task feedback.
 
-## Architecture
+## Key Results
+
+### ALFWorld (134 tasks, gpt-4.1-mini)
+
+**MemCon consistently outperforms G-Memory across all agent frameworks, while using fewer tokens.**
+
+| Framework | + G-Memory | + MemCon (Ours) | Δ Success | Δ Tokens |
+|-----------|-----------|-----------------|-----------|----------|
+| SkillMAS | 67.2% | **73.9%** | **+6.7%** | — |
+| LangGraph | 61.2% | **70.1%** | **+8.9%** | **-17.3%** |
+| Lobster | 61.9% | **63.4%** | **+1.5%** | **-1.4%** |
+| Agent-Framework | 70.1% | 68.7% | -1.4% | **-5.2%** |
+| No memory | 40.3% | — | — | — |
+
+### Per-Task-Type Breakdown (SkillMAS backbone)
+
+| Task Type | G-Memory | MemCon | Improvement |
+|-----------|----------|--------|-------------|
+| put | 83.3% | **87.5%** | +4.2% |
+| clean | 77.4% | **80.6%** | +3.2% |
+| heat | 60.9% | **69.6%** | +8.7% |
+| cool | 90.5% | 90.5% | — |
+| examine | 61.1% | **83.3%** | **+22.2%** |
+| puttwo | 11.8% | **17.6%** | +5.8% |
+
+## Method Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     MPC Controller (Predictive Control)                  │
-│                                                                         │
-│  At each step, optimizes over horizon H to decide:                      │
-│  • Reuse cached results     • Retrieve past experiences                 │
-│  • Invoke stored skill      • Fresh LLM generation                     │
-│  • Consolidate into skills  • Evict stale memory                       │
-│  Under constraints: token cost ≤ B_token, latency ≤ B_latency          │
-│                                                                         │
-│          ┌──────────────────┼──────────────────┐                       │
-│          ▼                  ▼                  ▼                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                 │
-│  │ Cache Memory  │  │  Retrieval   │  │ Skill Memory │                 │
-│  │ LRU+TTL, O(1)│  │  Semantic    │  │  Procedural  │                 │
-│  │ hash + embed  │  │  vectors +   │  │  distillation│                 │
-│  │ soft match    │  │  importance  │  │  + evolution  │                 │
-│  └──────────────┘  └──────────────┘  └──────────────┘                 │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     MemCon Controller                            │
+│                                                                  │
+│   State s = (goal_type, step_phase, is_stuck, mem_size,          │
+│              plan_available, learning_phase)                      │
+│                                                                  │
+│   Policy π(s) → action a via UCB bandit:                         │
+│     a = argmax [ Q(s,a) + c·√(ln N / Nₐ) ]                     │
+│                                                                  │
+│   Actions: RETRIEVE(top_k, insight_k, hop)                       │
+│            PLAN_INJECT | RE_RETRIEVE | CONSOLIDATE               │
+│            FORGET | NO_OP                                        │
+│                                                                  │
+│   Reward: success(+1) + efficiency_bonus − failure(−0.5)         │
+│   Update: Q(s,a) ← Q(s,a) + α[γ^t · r − Q(s,a)]               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌──────────────────────────────────────────┐                   │
+│   │  ANY Memory Backend (wrapped)            │                   │
+│   │  • G-Memory (graph + Chroma + insights)  │                   │
+│   │  • Vector store                          │                   │
+│   │  • Skill memory                          │                   │
+│   │  • ...                                   │                   │
+│   └──────────────────────────────────────────┘                   │
+│                                                                  │
+│   + Generalized Success Plans (object IDs → placeholders)        │
+│   + Goal Decomposition (puttwo → 2× single put)                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+### Why it works
+
+Existing memory systems use **fixed retrieval strategies** (always top_k=2, always hop=1). MemCon learns that:
+- **Early tasks** (cold start): minimal retrieval works best — memory is empty anyway
+- **Familiar goal types** (warm phase): plan injection is better than full retrieval
+- **When stuck**: re-retrieve with different parameters helps
+- **examine tasks**: success plans are highly transferable (+22%)
 
 ## Project Structure
 
 ```
-├── hmf/                        # Hierarchical Memory Framework (main contribution)
-│   ├── config.py               #   Central configuration
-│   ├── memory/                 #   Three memory substrates
-│   │   ├── cache_memory.py     #     LRU+TTL cache with semantic soft-match
-│   │   ├── retrieval_memory.py #     Importance-weighted vector store
-│   │   └── skill_memory.py     #     Procedural knowledge + trajectory distillation
-│   ├── mpc/                    #   Model Predictive Control layer
-│   │   ├── controller.py       #     Rolling-horizon optimizer (heuristic + LLM scoring)
-│   │   ├── cost_model.py       #     Multi-objective: α·token + β·latency + γ·uncertainty - δ·utility
-│   │   └── state.py            #     Joint memory + task state tracking
-│   ├── agent/                  #   Orchestration layer
-│   │   ├── hmf_agent.py        #     Full task lifecycle management
-│   │   └── trajectory.py       #     Step-by-step execution traces
-│   ├── integrations/           #   Framework adapters
-│   │   ├── mas_hmf_memory.py   #     MASMemoryBase adapter (for tasks/run.py)
-│   │   ├── langgraph_hmf.py    #     LangGraph + HMF runner
-│   │   ├── langgraph_gmemory.py#     LangGraph + G-Memory runner
-│   │   ├── agent_framework_hmf.py #  Agent-Framework + HMF runner
-│   │   └── lobster_hmf.py      #     Lobster + HMF runner
-│   └── evaluation/             #   Extended metrics (token efficiency, cache hits, etc.)
-│
-├── mas/                        # Core multi-agent system framework
-│   ├── llm.py                  #   LLM backends (OpenAI, Gemini, Qwen, Claude)
-│   ├── module_map.py           #   Registry: memory name → class
-│   ├── memory/mas_memory/      #   Baseline memory implementations
-│   │   ├── GMemory.py          #     G-Memory (graph-based, Chroma + NetworkX)
-│   │   ├── gmemory_plus.py     #     G-Memory++ (goal module + skill mining)
-│   │   ├── skill_memory.py     #     Skill-Conditioned RL + ExpRAG + LLM Refine
-│   │   ├── skill_rl.py         #     Q(goal_type, skill_id) with UCB
-│   │   ├── skill_miner.py      #     FINCH clustering → LLM skill extraction
-│   │   └── goal_module.py      #     Goal parsing
-│   └── agents/, reasoning/, tools/
-│
-├── tasks/                      # Task runner and environments
-│   ├── run.py                  #   Main entry point
-│   ├── configs.yaml            #   Global configuration
-│   ├── envs/                   #   ALFWorld, PDDL, SciWorld, Math/QA environments
-│   ├── mas_workflow/           #   SkillMAS execution loop (Think-Act-Refine)
-│   └── prompts/                #   Task-specific prompt templates
-│
-├── agent_baseline/             # Multi-framework benchmark harness
-│   ├── run_benchmark.py        #   Unified benchmark entry
-│   ├── runners/                #   LangGraph / AutoGen / Lobster + HMF variants
-│   └── dataset/                #   Dataset loaders and prompt registries
-│
-├── scripts/
-│   ├── hmf/                    #   HMF experiment scripts (comparison, per-benchmark)
-│   ├── legacy/                 #   Original gemini/claude scripts (Skill-RL baseline)
-│   ├── clean_memory.sh         #   Utility: wipe .db/
-│   └── download_qa_data.py     #   Download AIME/GPQA/MMLU-Pro from HuggingFace
-│
-├── data/                       #   Benchmark data (qa_test, math_test, pddl, humaneval)
-├── configs/                    #   LLM configuration
-└── results/                    #   Experiment outputs
+├── hmf/
+│   ├── mcp_framework/              # Core contribution
+│   │   ├── memory_mdp.py           #   Memory MDP formulation (S, A, T, R)
+│   │   ├── policy.py               #   Online UCB contextual bandit
+│   │   └── wrapper.py              #   Backend-agnostic wrapper
+│   ├── integrations/               # Memory backend implementations
+│   │   ├── mas_memcon.py           #   MemCon wrapping G-Memory
+│   │   ├── mas_amc.py              #   Anticipatory Memory Control (ablation)
+│   │   ├── mas_hmf_memory.py       #   HMF with heuristic MPC (ablation)
+│   │   ├── mas_hmf_static.py       #   HMF without controller (ablation)
+│   │   ├── mas_hmf_learned.py      #   HMF with learned bandit (ablation)
+│   │   └── mas_gmemory_enhanced.py #   G-Memory + cache (ablation)
+│   ├── alfworld_runners/           # Multi-framework evaluation
+│   │   ├── base.py                 #   Generic ALFWorld loop (mirrors SkillMAS)
+│   │   ├── langgraph_runner.py     #   LangGraph backend
+│   │   ├── lobster_runner.py       #   Lobster (OpenAI direct) backend
+│   │   ├── agent_framework_runner.py #  MS Agent Framework backend
+│   │   └── run_all.py              #   Run all framework×memory combos
+│   ├── memory/                     # Memory substrates (cache/retrieval/skill)
+│   ├── mpc/                        # Original MPC controller (ablation)
+│   └── agent/                      # Orchestration layer
+├── mas/                            # Core multi-agent framework
+│   ├── memory/mas_memory/          #   G-Memory, SkillMemory, etc.
+│   ├── module_map.py               #   Registry (--mas_memory memcon)
+│   └── llm.py                      #   LLM backends
+├── tasks/                          # Task runner and environments
+│   ├── run.py                      #   Main entry point
+│   ├── envs/                       #   ALFWorld, PDDL, SciWorld, Math/QA
+│   └── mas_workflow/               #   SkillMAS execution loop
+├── agent_baseline/                 # Multi-framework benchmark harness
+├── method.tex                      # Methodology (LaTeX)
+└── scripts/                        # Run scripts
 ```
 
 ## Quick Start
@@ -89,77 +110,73 @@ This repository implements a **hierarchical memory framework (HMF)** that unifie
 ### Setup
 
 ```bash
-# Create and activate conda environment
-conda create -n hmf python=3.12 -y
-conda activate hmf
+conda create -n memcon python=3.12 -y && conda activate memcon
 
-# Install dependencies
 pip install -r hmf/requirements.txt
-
-# For ALFWorld
 pip install alfworld && alfworld-download
-
-# For SciWorld
-pip install scienceworld
+pip install gym==0.26.2 scikit-image   # for pddlgym
 ```
 
 ### Configuration
 
 ```bash
-# Set in .env or export
 export OPENAI_API_KEY="your-key"
 export OPENAI_API_BASE="https://api.openai.com/v1"
 ```
 
-### Running Experiments
+### Run MemCon on ALFWorld (SkillMAS backbone)
 
 ```bash
-# ALFWorld: three-way comparison (empty vs g-memory vs hmf)
-bash scripts/hmf/run_alfworld_comparison.sh
-
-# Individual benchmarks with HMF memory
-bash scripts/hmf/run_hmf_alfworld.sh
-bash scripts/hmf/run_hmf_pddl.sh
-bash scripts/hmf/run_hmf_aime25.sh
-bash scripts/hmf/run_hmf_gpqa.sh
-
-# Direct command
-python3 tasks/run.py \
+python tasks/run.py \
     --task alfworld \
     --mas_type skill-mas \
-    --mas_memory hmf \          # hmf | g-memory | skill-rl | empty
+    --mas_memory memcon \
     --model gpt-4.1-mini \
     --max_trials 30
+```
+
+### Run Multi-Framework Comparison
+
+```bash
+# All 6 combos: {lobster, langgraph, agent_framework} × {memcon, g-memory}
+python hmf/alfworld_runners/run_all.py --limit 134
+
+# Single combo
+python hmf/alfworld_runners/run_all.py --combo lobster:memcon --limit 20
 ```
 
 ### Available Memory Backends
 
 | `--mas_memory` | System | Description |
 |----------------|--------|-------------|
-| `empty` | No memory | Baseline with no cross-task memory |
-| `g-memory` | G-Memory | Graph-based hierarchical memory (Chroma + NetworkX) |
-| `skill-rl` | Skill-Conditioned RL | Q-learning skill selection + ExpRAG + LLM Refine |
-| `hmf` | **HMF (ours)** | Cache + Retrieval + Skill + MPC controller |
+| `memcon` | **MemCon (ours)** | Learned policy controlling G-Memory |
+| `g-memory` | G-Memory | Graph + Chroma + insights (baseline) |
+| `skill-rl` | Skill-Conditioned RL | Q-learning + ExpRAG + LLM Refine |
+| `hmf` | HMF | Cache + Retrieval + Skill + heuristic MPC |
+| `hmf-static` | HMF-Static | Same layers, fixed pipeline (ablation) |
+| `hmf-learned` | HMF-Learned | Same layers, learned bandit (ablation) |
+| `amc` | AMC | G-Memory + step-action memory (ablation) |
+| `empty` | No memory | Baseline |
 
-## Supported Benchmarks
+## Ablation Study (ALFWorld, SkillMAS, gpt-4.1-mini)
 
-| Benchmark | Type | Tasks | Via |
-|-----------|------|-------|----|
-| ALFWorld | Household interaction | 134 | `tasks/run.py` |
-| PDDL | Classical planning | 120 | `tasks/run.py` |
-| SciWorld | Science experiments | varies | `tasks/run.py` |
-| AIME 2024/2025 | Math competition | 30 | `tasks/run.py` |
-| GPQA | Graduate-level QA | varies | `tasks/run.py` |
-| MMLU-Pro | Multi-domain knowledge | varies | `tasks/run.py` |
-| HumanEval | Code generation | 164 | `agent_baseline/` |
+| Method | Success | Note |
+|--------|---------|------|
+| **MemCon** | **73.9%** | Learned policy over G-Memory |
+| G-Memory | 67.2% | Graph + insight scoring |
+| AMC | 66.4% | Step-level guidance, no policy learning |
+| HMF-Static | 62.7% | Three layers, fixed pipeline |
+| HMF-Learned | 59.0% | Three flat layers + bandit |
+| HMF (heuristic MPC) | 58.2% | Three flat layers + hand-tuned costs |
+| Empty | 40.3% | No memory |
 
 ## Related Work
 
-- **LLMPC** — LLM as implicit cost-function optimizer for predictive control ([arXiv:2501.02486](https://arxiv.org/abs/2501.02486))
-- **MemP** — Procedural memory with step-by-step abstractions ([arXiv:2508.06433](https://arxiv.org/abs/2508.06433))
-- **ProcMEM** — Skill-MDP with semantic gradients and PPO Gate ([arXiv:2602.01869](https://arxiv.org/abs/2602.01869))
-- **MemSkill** — Learnable memory operations with closed-loop skill evolution ([arXiv:2602.02474](https://arxiv.org/abs/2602.02474))
-- **G-Memory** — Graph-based hierarchical memory for MAS ([arXiv:2506.07398](https://arxiv.org/abs/2506.07398))
+- [G-Memory](https://arxiv.org/abs/2506.07398) — Graph-based hierarchical memory for MAS
+- [LLMPC](https://arxiv.org/abs/2501.02486) — LLM as implicit cost-function optimizer
+- [MemP](https://arxiv.org/abs/2508.06433) — Procedural memory with step-by-step abstractions
+- [ProcMEM](https://arxiv.org/abs/2602.01869) — Skill-MDP with semantic gradients
+- [MemSkill](https://arxiv.org/abs/2602.02474) — Learnable memory operations
 
 ## License
 
