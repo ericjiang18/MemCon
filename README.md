@@ -23,27 +23,6 @@ MemCon consistently outperforms G-Memory across **3 frameworks × 3 benchmarks**
 | | G-Memory | **66.4%** | 73.0% | 73.0% |
 | | **MemCon** | 65.7% | **74.0%** | 73.0% |
 
-### Ablation Study (SkillMAS backbone, ALFWorld 134 tasks)
-
-| Method | Success | vs G-Memory |
-|--------|---------|-------------|
-| **MemCon (ours)** | **73.9%** | **+6.7%** |
-| G-Memory | 67.2% | baseline |
-| AMC | 66.4% | -0.8% |
-| HMF-Static | 62.7% | -4.5% |
-| HMF (hand-tuned MPC) | 58.2% | -9.0% |
-| Empty | 40.3% | -26.9% |
-
-### Per-Task-Type (ALFWorld)
-
-| Type | G-Memory | MemCon | Δ |
-|------|----------|--------|---|
-| examine | 61.1% | **83.3%** | **+22.2%** |
-| heat | 60.9% | **69.6%** | +8.7% |
-| put | 83.3% | **87.5%** | +4.2% |
-| clean | 77.4% | **80.6%** | +3.2% |
-| cool | 90.5% | 90.5% | — |
-| puttwo | 11.8% | **17.6%** | +5.8% |
 
 ## How It Works
 
@@ -64,14 +43,7 @@ MemCon consistently outperforms G-Memory across **3 frameworks × 3 benchmarks**
 │  Reward: success(+1) + efficiency − failure(−0.5)        │
 │  Update: Q ← Q + α[γᵗ·r − Q]   (online, per task)      │
 ├──────────────────────────────────────────────────────────┤
-│           ┌────────────────────────────┐                 │
-│           │  ANY Memory Backend        │                 │
-│           │  (G-Memory, vector store,  │                 │
-│           │   skill memory, ...)       │                 │
-│           └────────────────────────────┘                 │
-│  + Generalized Success Plans (IDs → placeholders)        │
-│  + Goal Decomposition (puttwo → 2× single put)           │
-└──────────────────────────────────────────────────────────┘
+
 ```
 
 ## Setup
@@ -137,48 +109,6 @@ python hmf/alfworld_runners/run_all.py --combo lobster:g-memory --limit 100
 # 9. SciWorld + MemCon (ours)
 python hmf/alfworld_runners/run_all.py --combo lobster:memcon --limit 100
 ```
-
-### Multi-Framework Comparison
-
-```bash
-# Run all 3 frameworks × 3 memories on ALFWorld
-for FW in lobster langgraph agent_framework; do
-  for MEM in memcon g-memory empty; do
-    python hmf/alfworld_runners/run_all.py --combo $FW:$MEM --limit 134
-  done
-done
-
-# Or use the full experiment script (launches all in parallel)
-python hmf/alfworld_runners/run_full_experiment.py --all
-```
-
-### Using tasks/run.py (SkillMAS backbone)
-
-```bash
-# MemCon on ALFWorld
-python tasks/run.py --task alfworld --mas_type skill-mas --mas_memory memcon \
-    --model gpt-4.1-mini --max_trials 30
-
-# G-Memory on PDDL
-python tasks/run.py --task pddl --mas_type skill-mas --mas_memory g-memory \
-    --model gpt-4.1-mini --max_trials 30
-
-# No memory on SciWorld
-python tasks/run.py --task sciworld --mas_type skill-mas --mas_memory empty \
-    --model gpt-4.1-mini --max_trials 30
-```
-
-### Available Memory Backends
-
-| `--mas_memory` / `--combo X:` | Description |
-|-------------------------------|-------------|
-| `memcon` | **MemCon (ours)** — learned policy wrapping G-Memory |
-| `g-memory` | G-Memory — graph + Chroma + insight scoring |
-| `skill-rl` | Skill-Conditioned RL + ExpRAG + LLM Refine |
-| `hmf` | HMF — cache + retrieval + skill + heuristic MPC |
-| `hmf-static` | HMF without controller (ablation) |
-| `amc` | Anticipatory Memory Control (ablation) |
-| `empty` | No memory baseline |
 
 ## Project Structure
 
