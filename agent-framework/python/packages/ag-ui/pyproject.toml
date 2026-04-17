@@ -1,0 +1,81 @@
+[project]
+name = "agent-framework-ag-ui"
+version = "1.0.0b260409"
+description = "AG-UI protocol integration for Agent Framework"
+readme = "README.md"
+license-files = ["LICENSE"]
+authors = [{ name = "Microsoft", email = "af-support@microsoft.com"}]
+requires-python = ">=3.10"
+urls.homepage = "https://aka.ms/agent-framework"
+urls.source = "https://github.com/microsoft/agent-framework/tree/main/python"
+urls.release_notes = "https://github.com/microsoft/agent-framework/releases?q=tag%3Apython-1&expanded=true"
+urls.issues = "https://github.com/microsoft/agent-framework/issues"
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+    "agent-framework-core>=1.0.1,<2",
+    "ag-ui-protocol==0.1.13",
+    "fastapi>=0.115.0,<0.133.1",
+    "uvicorn[standard]>=0.30.0,<0.42.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.0.2",
+    "httpx==0.28.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_framework_ag_ui", "agent_framework_ag_ui_examples"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests/ag_ui"]
+pythonpath = [".", "tests/ag_ui"]
+markers = [
+    "integration: marks tests as integration tests that require external services",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pyright]
+include = ["agent_framework_ag_ui"]
+exclude = ["tests", "tests/ag_ui", "examples"]
+typeCheckingMode = "basic"
+
+[tool.poe]
+executor.type = "uv"
+include = "../../shared_tasks.toml"
+
+[tool.poe.tasks.mypy]
+help = "Run MyPy for this package."
+cmd = "mypy --config-file $POE_ROOT/pyproject.toml agent_framework_ag_ui"
+
+[tool.poe.tasks.test]
+help = "Run the default unit test suite for this package."
+cmd = 'pytest -m "not integration" --cov=agent_framework_ag_ui --cov-report=term-missing:skip-covered -n auto --dist worksteal tests/ag_ui'

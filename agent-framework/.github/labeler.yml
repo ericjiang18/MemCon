@@ -1,0 +1,34 @@
+# Add 'python' label to any change within the 'python' directory
+python:
+- changed-files:
+  - any-glob-to-any-file:
+    - python/**
+
+# Add '.NET' label to any change within samples or kernel 'dotnet' directories.
+.NET:
+- changed-files:
+  - any-glob-to-any-file:
+    - dotnet/**
+
+# Add 'documentation' label to any change within the 'docs' directory, or any '.md' files
+documentation:
+- changed-files:
+  - any-glob-to-any-file:
+    - docs/**
+    - '**/*.md'
+
+# Add 'workflows' label to any change within the dotnet or python workflows src or samples
+workflows:
+- changed-files:
+  - any-glob-to-any-file:
+    - dotnet/src/Microsoft.Agents.AI.Workflows/**
+    - dotnet/src/Microsoft.Agents.AI.Workflows.Declarative/**
+    - dotnet/samples/03-workflows/**
+    - python/packages/main/agent_framework/_workflow/**
+    - python/samples/getting_started/workflow/**
+
+# Add 'lab' label to any change within the 'python/packages/lab' directory
+lab:
+- changed-files:
+  - any-glob-to-any-file:
+    - python/packages/lab/**

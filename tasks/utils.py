@@ -5,6 +5,7 @@ def get_model_type(model_name: str) -> str:
         'gpt-4.1-mini',
         'gpt-4.1-nano',
         'gpt-5.4-nano',
+        'gpt-5-mini',
         'gemini-2.5-flash',
         'gemini-2.0-flash',
         'gemini-1.5-flash',

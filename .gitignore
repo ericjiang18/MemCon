@@ -21,10 +21,8 @@ data/ScreenSpot-Pro/
 results/
 nohup.out
 
-# Vendored frameworks (install via pip)
-agent-framework/
-langgraph/
-lobster/
+# Vendored frameworks — included in repo for reproducibility
+# (can also install via pip: langchain-openai langgraph agent-framework-core)
 
 # IDE
 .vscode/

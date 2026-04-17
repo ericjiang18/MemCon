@@ -21,8 +21,9 @@ class LobsterALFWorld(ALFWorldRunner):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.1,
         )
+        if not any(t in self.model for t in ("gpt-5-mini", "o3", "o4-mini")):
+            params["temperature"] = 0.1
         if self._use_new_param:
             params["max_completion_tokens"] = 256
         else:

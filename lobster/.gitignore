@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Lobster state
+.lobster/
+.lobster-cache/
+.pnpm-store/
+
+# Private docs
+clawdbot_enhancement.md
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
