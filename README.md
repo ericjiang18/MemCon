@@ -24,6 +24,23 @@ MemCon consistently outperforms G-Memory across **3 frameworks × 3 benchmarks**
 | | **MemCon** | 65.7% | **74.0%** | 73.0% |
 
 
+### QA Benchmarks (gpt-4.1-mini, 200 tasks each)
+
+MemCon achieves comparable or higher accuracy than G-Memory while using **20–30% fewer tokens** per task.
+
+| Framework | Memory | TriviaQA | Tok/T | WebWalkerQA | Tok/T |
+|-----------|--------|----------|-------|-------------|-------|
+| **Lobster** | Empty | 69.5% | 57 | 17.8% | 154 |
+| | G-Memory | 66.0% | 262 | 18.6% | 360 |
+| | **MemCon** | **69.5%** | **208** | **21.2%** *(+2.6)* | **341** |
+| **LangGraph** | Empty | **68.5%** | 57 | 18.5% | 157 |
+| | G-Memory | 67.5% | 265 | **21.2%** | 424 |
+| | **MemCon** | 66.5% | **195** | 20.2% | **337** |
+| **Agent-FW** | Empty | **69.0%** | 57 | **19.4%** | 155 |
+| | G-Memory | 68.0% | 263 | 19.2% | 397 |
+| | **MemCon** | 68.5% | **187** | 19.0% | **348** |
+
+
 ## How It Works
 
 ```
@@ -108,6 +125,45 @@ python hmf/alfworld_runners/run_all.py --combo lobster:g-memory --limit 100
 
 # 9. SciWorld + MemCon (ours)
 python hmf/alfworld_runners/run_all.py --combo lobster:memcon --limit 100
+```
+
+### QA Benchmarks (TriviaQA, WebWalkerQA)
+
+```bash
+# ── TriviaQA (200 tasks) ──
+
+# 10. TriviaQA + No Memory (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark triviaqa --framework lobster --memory empty
+
+# 11. TriviaQA + G-Memory (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark triviaqa --framework lobster --memory g-memory
+
+# 12. TriviaQA + MemCon (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark triviaqa --framework lobster --memory memcon
+
+# ── WebWalkerQA (200 tasks) ──
+
+# 13. WebWalkerQA + No Memory (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark webwalkerqa --framework lobster --memory empty
+
+# 14. WebWalkerQA + G-Memory (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark webwalkerqa --framework lobster --memory g-memory
+
+# 15. WebWalkerQA + MemCon (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark webwalkerqa --framework lobster --memory memcon
+```
+
+### Multi-Framework (any benchmark × any framework × any memory)
+
+```bash
+# General form:
+python hmf/alfworld_runners/run_full_experiment.py \
+  --benchmark <alfworld|pddl|sciworld|triviaqa|webwalkerqa|gaia|assistantbench> \
+  --framework <lobster|langgraph|agent_framework> \
+  --memory <empty|g-memory|memcon>
+
+# Run ALL combinations:
+python hmf/alfworld_runners/run_full_experiment.py --all
 ```
 
 ## Project Structure
