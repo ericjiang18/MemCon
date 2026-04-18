@@ -56,7 +56,7 @@ def get_runner(framework: str):
     raise ValueError(f"Unknown framework: {framework}")
 
 
-def get_memory(memory_name: str, framework: str):
+def get_memory(memory_name: str, framework: str, benchmark: str = ""):
     if memory_name == "empty":
         return None
 
@@ -68,7 +68,8 @@ def get_memory(memory_name: str, framework: str):
     llm = GPTChat(model_name=MODEL)
     embed = EmbeddingFunc("sentence-transformers/all-MiniLM-L6-v2")
 
-    working_dir = os.path.join(".db", MODEL.replace("/", "_"), f"exp_{framework}_{memory_name}")
+    suffix = f"_{benchmark}" if benchmark else ""
+    working_dir = os.path.join(".db", MODEL.replace("/", "_"), f"exp_{framework}_{memory_name}{suffix}")
     os.makedirs(working_dir, exist_ok=True)
 
     return mem_cls(
@@ -184,7 +185,7 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
     else:
         prompt_set = None
 
-    mem_backend = get_memory(memory_name, framework) if memory_name != "empty" else None
+    mem_backend = get_memory(memory_name, framework, benchmark) if memory_name != "empty" else None
 
     # Build system prompt based on benchmark type
     if benchmark in ("humaneval",):
@@ -264,11 +265,15 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
 
         mem_ctx = ""
         if mem_backend:
-            short_task = task[:200].split("\n")[0]  # First line only for graph nodes
-            mem_backend.init_task_context(short_task, short_task)
-            mem_result = mem_backend.retrieve_memory(query_task=short_task, successful_topk=2, insight_topk=5)
-            if mem_result[2]:
-                mem_ctx = "\n\nRelevant insights:\n" + "\n".join(f"- {i}" for i in mem_result[2][:5])
+            short_task = task[:120].split("\n")[0]
+            try:
+                mem_backend.init_task_context(short_task, short_task)
+                mem_result = mem_backend.retrieve_memory(query_task=short_task, successful_topk=2, insight_topk=5)
+                if mem_result[2]:
+                    mem_ctx = "\n\nRelevant insights:\n" + "\n".join(f"- {i}" for i in mem_result[2][:5])
+            except Exception as mem_err:
+                print(f"    [MEM-WARN] task {idx}: {type(mem_err).__name__}: {str(mem_err)[:100]}")
+                mem_ctx = ""
 
         full_system = system_prompt + mem_ctx
 
@@ -367,8 +372,11 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
         correct += score
 
         if mem_backend:
-            mem_backend.save_task_context(label=score > 0, feedback=text[:300])
-            mem_backend.backward(score > 0)
+            try:
+                mem_backend.save_task_context(label=score > 0, feedback=text[:300])
+                mem_backend.backward(score > 0)
+            except Exception as mem_err:
+                print(f"    [MEM-WARN] save task {idx}: {type(mem_err).__name__}: {str(mem_err)[:80]}")
 
         results.append({"task_id": task_id, "score": score, "tokens": pt + ct})
 
