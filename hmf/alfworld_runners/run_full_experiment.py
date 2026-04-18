@@ -141,6 +141,13 @@ def _load_local_qa(benchmark: str, limit=None):
         "aime_2025": "data/qa_test/aime_2025.jsonl",
         "beyond_aime": "data/math_test/BeyondAIME__test.jsonl",
         "hmmt_feb_2025": "data/math_test/MathArena__hmmt_feb_2025.jsonl",
+        "hotpotqa": "data/qa_test/hotpotqa.jsonl",
+        "webwalkerqa": "data/qa_test/webwalkerqa.jsonl",
+        "travelplanner": "data/qa_test/travelplanner.jsonl",
+        "popqa": "data/qa_test/popqa.jsonl",
+        "triviaqa": "data/qa_test/triviaqa.jsonl",
+        "gaia": "data/qa_test/gaia.jsonl",
+        "assistantbench": "data/qa_test/assistantbench.jsonl",
         "hle": None,
     }
     path = _map.get(benchmark)
@@ -187,6 +194,24 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
                         "Put your final numerical answer in \\boxed{}.")
     elif benchmark == "hle":
         system_prompt = "You are a knowledgeable expert. Answer the multiple choice question. Output ONLY the letter (A/B/C/D/E)."
+    elif benchmark == "hotpotqa":
+        system_prompt = ("You are a multi-hop reasoning expert. Use the provided context paragraphs to answer the question. "
+                        "Give a short, precise answer (a few words).")
+    elif benchmark == "webwalkerqa":
+        system_prompt = ("You are a knowledgeable web research expert. Answer the question based on your knowledge. "
+                        "Give a precise, factual answer.")
+    elif benchmark == "travelplanner":
+        system_prompt = ("You are a travel planning expert. Create a day-by-day itinerary that satisfies all constraints. "
+                        "Include transportation, meals, attractions, and accommodation for each day.")
+    elif benchmark in ("popqa", "triviaqa"):
+        system_prompt = ("You are a knowledgeable trivia expert. Answer the question with a short, precise factual answer. "
+                        "Output ONLY the answer, nothing else.")
+    elif benchmark == "gaia":
+        system_prompt = ("You are a capable AI assistant. Answer the question precisely and concisely. "
+                        "Think step by step if needed, then give your final answer on the last line.")
+    elif benchmark == "assistantbench":
+        system_prompt = ("You are a capable web research assistant. Answer the question as precisely as possible. "
+                        "Give a short, factual answer.")
     else:
         system_prompt = "Solve the following problem carefully."
 
@@ -210,6 +235,26 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
             task = prompt_set.get_answer_prompt(sample.task)
             gt = sample.ground_truth
             task_id = sample.task_id
+        elif benchmark == "hotpotqa":
+            task = f"Context:\n{sample.get('context', '')}\n\nQuestion: {sample['question']}"
+            gt = sample.get("answer", "")
+            task_id = idx
+        elif benchmark == "webwalkerqa":
+            task = f"Question: {sample['question']}\n(Source website: {sample.get('root_url', '')})"
+            gt = sample.get("answer", "")
+            task_id = idx
+        elif benchmark == "travelplanner":
+            task = sample.get("query", "")
+            gt = ""
+            task_id = idx
+        elif benchmark in ("popqa", "triviaqa"):
+            task = f"Question: {sample['question']}"
+            gt = sample.get("answer", [])
+            task_id = idx
+        elif benchmark in ("gaia", "assistantbench"):
+            task = f"Question: {sample['question']}"
+            gt = str(sample.get("answer", ""))
+            task_id = idx
         else:
             task = sample.get("problem", sample.get("prompt", sample.get("task", str(sample))))
             gt = str(sample.get("answer", sample.get("solution", sample.get("ground_truth", ""))))
@@ -219,8 +264,9 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
 
         mem_ctx = ""
         if mem_backend:
-            mem_backend.init_task_context(task[:200], task)
-            mem_result = mem_backend.retrieve_memory(query_task=task[:300], successful_topk=2, insight_topk=5)
+            short_task = task[:200].split("\n")[0]  # First line only for graph nodes
+            mem_backend.init_task_context(short_task, short_task)
+            mem_result = mem_backend.retrieve_memory(query_task=short_task, successful_topk=2, insight_topk=5)
             if mem_result[2]:
                 mem_ctx = "\n\nRelevant insights:\n" + "\n".join(f"- {i}" for i in mem_result[2][:5])
 
@@ -259,6 +305,55 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
                 score = data.evaluate(processed, gt)
             except Exception:
                 score = 0.0
+        elif benchmark == "hotpotqa":
+            # F1-based scoring for HotpotQA
+            pred_tokens = set(text.lower().split())
+            gt_tokens = set(str(gt).lower().split())
+            if pred_tokens and gt_tokens:
+                common = pred_tokens & gt_tokens
+                prec = len(common) / len(pred_tokens) if pred_tokens else 0
+                rec = len(common) / len(gt_tokens) if gt_tokens else 0
+                score = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0
+            if str(gt).lower() in text.lower():
+                score = max(score, 1.0)
+        elif benchmark in ("gaia", "assistantbench"):
+            # Exact or containment match for GAIA/AssistantBench
+            text_lower = text.lower().strip()
+            gt_lower = str(gt).lower().strip()
+            if gt_lower and gt_lower in text_lower:
+                score = 1.0
+            elif gt_lower:
+                # Check last line
+                last_line = text.strip().split("\n")[-1].lower().strip()
+                if gt_lower in last_line or last_line == gt_lower:
+                    score = 1.0
+        elif benchmark in ("popqa", "triviaqa"):
+            # Alias-based matching: score 1 if any acceptable answer appears in output
+            text_lower = text.lower().strip()
+            answers = gt if isinstance(gt, list) else [gt]
+            for ans in answers:
+                ans_lower = str(ans).lower().strip()
+                if ans_lower and (ans_lower in text_lower or text_lower == ans_lower):
+                    score = 1.0
+                    break
+        elif benchmark == "travelplanner":
+            # TravelPlanner: check if plan mentions key elements
+            text_lower = text.lower()
+            has_transport = any(w in text_lower for w in ("flight", "drive", "bus", "train", "taxi"))
+            has_hotel = any(w in text_lower for w in ("hotel", "accommodation", "stay", "airbnb"))
+            has_food = any(w in text_lower for w in ("breakfast", "lunch", "dinner", "restaurant", "meal"))
+            has_attraction = any(w in text_lower for w in ("visit", "museum", "park", "tour", "attraction"))
+            score = (has_transport + has_hotel + has_food + has_attraction) / 4.0
+        elif benchmark == "webwalkerqa":
+            # Simple containment check
+            if str(gt).lower() in text.lower():
+                score = 1.0
+            else:
+                pred_tokens = set(text.lower().split())
+                gt_tokens = set(str(gt).lower().split())
+                common = pred_tokens & gt_tokens
+                score = len(common) / max(len(gt_tokens), 1)
+                score = min(score, 1.0)
         else:
             # Simple exact/boxed match for local data
             boxed = _re.search(r"\\boxed\{(.+?)\}", text)
@@ -267,7 +362,7 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
             if pred == gt_clean or pred.lower() == gt_clean.lower():
                 score = 1.0
             elif benchmark == "humaneval":
-                score = 0.0  # needs execution, skip for now
+                score = 0.0
 
         correct += score
 

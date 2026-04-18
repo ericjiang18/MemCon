@@ -106,8 +106,8 @@ class MemConWrapper(MASMemoryBase):
         self._mdp.reset(goal_type=self._current_goal_type, task_index=self._task_index)
 
         if self._inner:
-            self._inner.init_task_context(task_main, task_description, **kw)
-        return super().init_task_context(task_main, task_description)
+            self._inner.init_task_context(task_main[:300], (task_description or "")[:500], **kw)
+        return super().init_task_context(task_main[:300], (task_description or "")[:500])
 
     def move_memory_state(self, action: str, observation: str, **kwargs):
         super().move_memory_state(action, observation, **kwargs)
@@ -214,9 +214,9 @@ class MemConWrapper(MASMemoryBase):
 
     def _do_retrieve(self, query: str, action: MemoryAction, threshold: float) -> tuple:
         """Execute retrieval on the inner backend with policy-chosen parameters."""
-        q = query
+        q = query[:300]  # Truncate to avoid graph node errors with long contexts
         if action.op == MemOp.RE_RETRIEVE and action.query_suffix:
-            q = f"{query} {action.query_suffix}"
+            q = f"{q} {action.query_suffix}"
 
         return self._inner.retrieve_memory(
             query_task=q,
