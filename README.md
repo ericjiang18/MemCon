@@ -24,21 +24,21 @@ MemCon consistently outperforms G-Memory across **3 frameworks × 3 benchmarks**
 | | **MemCon** | 65.7% | **74.0%** | 73.0% |
 
 
-### QA Benchmarks (gpt-4.1-mini, 200 tasks each)
+### QA Benchmarks (gpt-4.1-mini)
 
-MemCon achieves comparable or higher accuracy than G-Memory while using **20–30% fewer tokens** per task.
+MemCon achieves comparable or higher accuracy than G-Memory while using **15–20% fewer tokens** per task.
 
-| Framework | Memory | TriviaQA | Tok/T | WebWalkerQA | Tok/T |
-|-----------|--------|----------|-------|-------------|-------|
-| **Lobster** | Empty | 69.5% | 57 | 17.8% | 154 |
-| | G-Memory | 66.0% | 262 | 18.6% | 360 |
-| | **MemCon** | **69.5%** | **208** | **21.2%** *(+2.6)* | **341** |
-| **LangGraph** | Empty | **68.5%** | 57 | 18.5% | 157 |
-| | G-Memory | 67.5% | 265 | **21.2%** | 424 |
-| | **MemCon** | 66.5% | **195** | 20.2% | **337** |
-| **Agent-FW** | Empty | **69.0%** | 57 | **19.4%** | 155 |
-| | G-Memory | 68.0% | 263 | 19.2% | 397 |
-| | **MemCon** | 68.5% | **187** | 19.0% | **348** |
+| Framework | Memory | TriviaQA | Tok/T | WebWalkerQA | Tok/T | GAIA | Tok/T |
+|-----------|--------|----------|-------|-------------|-------|------|-------|
+| **Lobster** | Empty | 69.5% | 57 | 17.8% | 154 | 20.0% | 394 |
+| | G-Memory | 66.0% | 262 | 18.6% | 360 | 21.6% | 703 |
+| | **MemCon** | **69.5%** | **208** | **21.2%** *(+2.6)* | **341** | **24.4%** *(+2.8)* | **575** |
+| **LangGraph** | Empty | **68.5%** | 57 | 18.5% | 157 | 18.2% | 393 |
+| | G-Memory | 67.5% | 265 | **21.2%** | 424 | 23.3% | 683 |
+| | **MemCon** | 66.5% | **195** | 20.2% | **337** | **27.3%** *(+4.0)* | **598** |
+| **Agent-FW** | Empty | **69.0%** | 57 | **19.4%** | 155 | 20.0% | 403 |
+| | G-Memory | 68.0% | 263 | 19.2% | 397 | 23.4% | 686 |
+| | **MemCon** | 68.5% | **187** | 19.0% | **348** | **29.2%** *(+5.8)* | **543** |
 
 
 ## How It Works
@@ -151,6 +151,19 @@ python hmf/alfworld_runners/run_full_experiment.py --benchmark webwalkerqa --fra
 
 # 15. WebWalkerQA + MemCon (Lobster)
 python hmf/alfworld_runners/run_full_experiment.py --benchmark webwalkerqa --framework lobster --memory memcon
+```
+
+### GAIA Benchmark (165 tasks)
+
+```bash
+# 16. GAIA + No Memory (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark gaia --framework lobster --memory empty
+
+# 17. GAIA + G-Memory (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark gaia --framework lobster --memory g-memory
+
+# 18. GAIA + MemCon (Lobster)
+python hmf/alfworld_runners/run_full_experiment.py --benchmark gaia --framework lobster --memory memcon
 ```
 
 ### Multi-Framework (any benchmark × any framework × any memory)

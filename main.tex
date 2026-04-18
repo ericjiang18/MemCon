@@ -1,0 +1,382 @@
+
+\documentclass{article} % For LaTeX2e
+\usepackage{colm2024_conference}
+
+
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage[table]{xcolor}
+
+
+\usepackage{lineno}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage[most]{tcolorbox}
+\usepackage{caption}
+\usepackage{xspace}
+
+\definecolor{darkblue}{rgb}{0, 0, 0.5}
+\hypersetup{colorlinks=true, citecolor=darkblue, linkcolor=darkblue, urlcolor=darkblue}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{colortbl}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{amsthm}
+\usepackage{nicefrac}
+\usepackage[capitalise,noabbrev]{cleveref}
+\usepackage{mathtools}
+\usepackage{siunitx}    
+\usepackage{makecell,threeparttable}
+\usepackage{pifont}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{rotating}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{etoc}
+\usepackage{listings}
+\usepackage{natbib}
+\usepackage{soul}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% TikZ
+\usepackage{tikz}
+\usetikzlibrary{shadows, arrows.meta, positioning, shapes.geometric, calc, fit, backgrounds, decorations.pathreplacing}
+\usepackage[edges]{forest}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\crefname{section}{Section}{Sections}
+\Crefname{section}{Section}{Sections}
+\crefrangelabelformat{section}{#3#1--#4#2}
+
+\crefname{subsection}{\S}{\S}
+\Crefname{subsection}{\S}{\S}
+
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\xmark}{\ding{55}}%
+\newcommand{\eg}{\textit{e.g.,}}
+
+\definecolor{lightcoral}{rgb}{0.94, 0.5, 0.5}
+\definecolor{darkpastelgreen}{rgb}{0.01, 0.75, 0.24}
+\definecolor{hidden-red}{RGB}{205, 44, 36}
+\definecolor{hidden-blue}{RGB}{194,232,247}
+\definecolor{hidden-orange}{RGB}{243,202,120}
+\definecolor{hidden-green}{RGB}{34,139,34}
+\definecolor{hidden-pink}{RGB}{255,245,247}
+\definecolor{hidden-black}{RGB}{20,68,106}
+\definecolor{purple}{RGB}{144,153,196}
+\definecolor{yellow}{RGB}{255,228,123}
+\definecolor{hidden-yellow}{RGB}{255,248,203}
+\definecolor{tkcolor}{RGB}{224,223,255}
+\definecolor{myred}{RGB}{247,226,231}
+\definecolor{myblue}{RGB}{216,226,234}
+\definecolor{myyellow}{RGB}{252,238,221}
+\definecolor{mypurple}{RGB}{233,229,241}
+\definecolor{mygreen}{RGB}{204,231,207}
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Custom commands
+\newcommand{\ours}{\textsc{MemCon}\xspace}
+\newcommand{\Qskill}{Q(\phi,a)}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+
+
+\title{Memory as a Controlled Process: Learned Adaptive Memory Management for LLM Agents}
+
+\author{Anonymous}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+% \colmfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+LLM-based agents increasingly rely on memory systems to accumulate experience across tasks, yet existing approaches treat memory with fixed, hand-designed retrieval heuristics---always querying the same number of results with the same search depth, regardless of task context.
+We observe that \emph{optimal memory behavior varies with context}: early tasks benefit from minimal retrieval (memory is sparse), familiar goal types benefit from plan reuse (not retrieval), and stuck agents benefit from re-retrieval with alternative queries.
+We present \ours (\textbf{Mem}ory as a \textbf{Con}trolled Process), a framework that models memory operations as a Markov Decision Process and learns an online policy to adaptively control retrieval parameters, plan injection, consolidation, and eviction.
+\ours is \emph{backend-agnostic}: it wraps any existing memory system and learns to use it better through task-by-task feedback, requiring no pretraining and no additional LLM calls.
+Across three interactive benchmarks (ALFWorld, PDDL, ScienceWorld) and three agent frameworks (LangGraph, Lobster, Agent-Framework), \ours consistently outperforms G-Memory, a strong graph-based baseline, by 2--11 percentage points in task success while reducing token consumption by 5--18\%.
+\end{abstract}
+
+
+\section{Introduction}
+\label{sec:intro}
+
+Large Language Models deployed as autonomous agents have shown impressive capabilities in interactive environments~\citep{yao2023react,wang2024survey}.
+A critical enabler is \emph{memory}---the ability to store and retrieve experiences across tasks, allowing agents to avoid repeating mistakes, reuse successful strategies, and accumulate domain knowledge over time.
+
+Recent memory systems have grown increasingly sophisticated.
+G-Memory~\citep{gmemory} combines graph-structured task relationships with vector retrieval and scored insight rules.
+ExpeL~\citep{zhao2024expel} and Reflexion~\citep{shinn2023reflexion} extract verbal reflections from failures.
+Voyager~\citep{wang2023voyager} maintains a library of reusable code-based skills.
+MemSkill~\citep{memskill} introduces learnable memory operations with closed-loop evolution.
+Yet all these systems share a fundamental limitation: they \textbf{use fixed heuristics to control memory access}.
+Retrieval always uses the same \texttt{top\_k}, the same graph hop depth, and the same query---regardless of whether the agent is on its first task (with empty memory) or its hundredth (with rich accumulated experience), regardless of whether it is solving a familiar goal type or an entirely novel one.
+
+We make a simple but important observation: optimal memory behavior is inherently context-dependent. When an agent encounters a new or unfamiliar situation, relying heavily on retrieval may be inefficient if little useful information is available. As the agent gains experience, reusing previously successful strategies can become more effective than generic retrieval. However, in cases where the agent becomes stuck or exhibits repetitive behavior, revisiting memory with a refined query can help introduce new context and improve performance. These scenarios highlight that no single fixed memory strategy is sufficient across all situations, and effective memory usage must adapt dynamically to the task and the agent’s current state.
+
+
+We introduce \ours (\textbf{Mem}ory as a \textbf{Con}trolled Process), a framework that treats memory operations as a sequential decision problem.
+\ours models the choice of memory action (retrieve, inject plan, consolidate, forget, re-retrieve) and its parameters ($\texttt{top\_k}$, $\texttt{insight\_k}$, $\texttt{hop}$) as a \emph{Memory MDP}, and learns an online policy via contextual bandits with UCB exploration.
+Crucially, \ours is \textbf{backend-agnostic}: it wraps any existing memory implementation (we use G-Memory as the default backend) and learns to control it better, requiring \textbf{zero pretraining} and \textbf{zero additional LLM calls}---the policy is a lightweight tabular lookup updated from task-by-task binary feedback.
+
+We evaluate \ours across three interactive benchmarks (ALFWorld, PDDL planning, ScienceWorld) with three diverse agent frameworks (LangGraph, Lobster, Agent-Framework), totaling 18 framework$\times$memory$\times$benchmark configurations.
+\ours consistently outperforms both G-Memory and no-memory baselines, achieving up to 73.9\% on ALFWorld (vs.\ 67.2\% for G-Memory), while using 5--18\% fewer tokens per task.
+
+\textbf{Contributions.}
+\begin{enumerate}[leftmargin=1.5em, itemsep=2pt]
+    \item We formalize agent memory management as a \emph{Memory MDP} and introduce a backend-agnostic wrapper architecture that decouples the memory \emph{control policy} from the memory \emph{storage backend}.
+    \item We design an online contextual bandit policy with UCB exploration, warm-start initialization, and reverse-discounted credit assignment that learns effective memory strategies from task feedback alone.
+    \item We introduce two augmented memory operations---\emph{generalized plan injection} and \emph{goal decomposition}---that address specific failure modes in multi-step interactive tasks.
+    \item We demonstrate consistent improvements over G-Memory across 3 benchmarks $\times$ 3 frameworks, establishing that learned memory control is a general-purpose improvement over static heuristics.
+\end{enumerate}
+
+
+\section{Related Work}
+\label{sec:related}
+
+\textbf{Memory for LLM Agents.}
+Generative Agents~\citep{park2023generative} introduced memory streams with retrieval, reflection, and planning.
+MemoryBank~\citep{zhong2024memorybank} stores long-term experiences for enhanced dialogue.
+Reflexion~\citep{shinn2023reflexion} pioneered verbal reinforcement learning via stored reflections.
+G-Memory~\citep{gmemory} combines graph-structured task relationships with Chroma vector retrieval and scored insight rules, representing the current state-of-the-art for interactive agent benchmarks.
+All these systems use \emph{fixed} retrieval strategies.
+\ours learns \emph{when and how} to access any such memory system.
+
+\textbf{Procedural Knowledge and Skills.}
+Voyager~\citep{wang2023voyager} maintains a growing code-based skill library.
+MemP~\citep{memp} distills trajectories into step-by-step abstractions.
+ProcMEM~\citep{procmem} learns a PPO-based gate over procedural memory.
+MemSkill~\citep{memskill} introduces learnable memory operations with closed-loop evolution.
+These works focus on \emph{what} to store; \ours focuses on \emph{how to access} stored knowledge, making it complementary.
+
+\textbf{Predictive Control for LLMs.}
+LLMPC~\citep{llmpc} uses the LLM itself as an implicit cost-function optimizer for planning.
+We share the MPC framing but apply it to \emph{memory operations} rather than task planning, and use lightweight tabular RL instead of additional LLM calls.
+
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Problem Formulation: Memory MDP}
+\label{sec:memory-mdp}
+
+Consider an LLM agent solving tasks $\{\tau_1, \ldots, \tau_N\}$ sequentially.
+At each task $\tau_i$, the agent interacts with an environment over $T_i$ steps with access to a memory system $\mathcal{M}$.
+We model memory operations as an MDP $\mathcal{M}_{\text{mem}} = (\mathcal{S}, \mathcal{A}, \mathcal{T}, \mathcal{R}, \gamma)$.
+
+\paragraph{State $\mathcal{S}$.} The state $s = (s^{\text{task}}, s^{\text{mem}})$ captures task progress and memory status:
+\begin{align}
+    s^{\text{task}} &= (\texttt{goal\_type},\; \texttt{step\_phase},\; \texttt{is\_stuck},\; \texttt{locations\_visited}) \\
+    s^{\text{mem}} &= (\texttt{mem\_size},\; \texttt{plan\_available},\; \texttt{learning\_phase})
+\end{align}
+where $\texttt{step\_phase} \in \{\text{early}, \text{mid}, \text{late}\}$ and $\texttt{learning\_phase} \in \{\text{cold}, \text{warm}\}$.
+We discretize $s$ into a compact key $\phi(s)$ for tabular learning.
+
+\paragraph{Actions $\mathcal{A}$.} Each action $a = (\texttt{op}, \theta)$ specifies a memory operation and its parameters:
+\begin{equation}
+    \texttt{op} \in \{\textsc{Retrieve},\; \textsc{PlanInject},\; \textsc{Re-Retrieve},\; \textsc{Consolidate},\; \textsc{Forget},\; \textsc{NoOp}\}
+\end{equation}
+with parameters $\theta = (\texttt{top\_k}, \texttt{insight\_k}, \texttt{hop})$.
+We instantiate the action space as 9 representative configurations spanning shallow retrieval ($\texttt{top\_k}\!=\!1$, $\texttt{hop}\!=\!0$) to deep retrieval ($\texttt{top\_k}\!=\!3$, $\texttt{hop}\!=\!2$) plus plan injection and maintenance operations.
+
+\paragraph{Reward $\mathcal{R}$.}
+\begin{equation}
+    r(\tau_i) = \mathbb{1}[\text{success}] + \lambda \cdot \max\!\left(0,\; 1 - T_i / T_{\max}\right), \qquad r_{\text{fail}} = -0.5
+\end{equation}
+where $\lambda = 0.3$ rewards step efficiency.
+
+
+\subsection{Online Policy Learning}
+\label{sec:policy}
+
+We learn $\pi: \mathcal{S} \to \mathcal{A}$ via an online contextual bandit with UCB exploration, requiring \textbf{no pretraining} and \textbf{no extra LLM calls}.
+
+\paragraph{Action selection via UCB.}
+\begin{equation}
+    a_t = \arg\max_{a \in \mathcal{A}} \left[ Q(\phi(s_t), a) \;+\; c \sqrt{\frac{\ln N}{N_a(\phi(s_t))}} \right], \qquad c = 1.4
+\end{equation}
+
+\paragraph{Warm-start.} Before any learning, $Q$-values are initialized with priors: $Q_0 = 0.5$ for \textsc{Retrieve}, $0.3$ for \textsc{PlanInject}, $-0.2$ for \textsc{NoOp}.
+
+\paragraph{Credit assignment.} After task $\tau_i$, all visited $(s,a)$ pairs are updated with reverse-discounted reward:
+\begin{equation}
+    Q(\phi_j, a_j) \leftarrow Q(\phi_j, a_j) + \alpha \left[ \gamma^{|\text{ep}| - j - 1} \cdot r_i - Q(\phi_j, a_j) \right], \qquad \alpha\!=\!0.15,\; \gamma\!=\!0.9
+\end{equation}
+
+
+\subsection{Backend-Agnostic Wrapper}
+\label{sec:wrapper}
+
+\ours intercepts two methods of any memory backend $\mathcal{M}_{\text{inner}}$:
+
+\begin{enumerate}[leftmargin=1.5em]
+    \item \textbf{\texttt{retrieve\_memory}}: The policy selects parameters $(\texttt{top\_k}^*, \texttt{insight\_k}^*, \texttt{hop}^*)$, calls $\mathcal{M}_{\text{inner}}$ with those parameters, and optionally augments results with plan injection or goal decomposition.
+    \item \textbf{\texttt{save\_task\_context}}: Updates the policy (Eq.~6), stores generalized success plans, and delegates to $\mathcal{M}_{\text{inner}}$.
+\end{enumerate}
+
+This design is agnostic to the backend. We use G-Memory as $\mathcal{M}_{\text{inner}}$ in all experiments, but \ours can wrap any implementation (flat vector store, skill memory, etc.).
+
+
+\subsection{Augmented Memory Operations}
+
+\paragraph{Generalized plan injection.}
+After a successful task of type $g$, we record and \emph{generalize} the action sequence by replacing instance-specific IDs with categorical placeholders (\texttt{``go to shelf 3''} $\to$ \texttt{``go to [shelf]''}).
+On future tasks of type $g$, the policy can inject this template, providing a concrete executable plan rather than abstract insights.
+
+\paragraph{Goal decomposition.}
+For composite tasks (e.g., ALFWorld's \textit{puttwo} requiring two objects), we inject sub-goal decomposition and retrieve memory for simpler single-object variants.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Setup}
+
+\paragraph{Benchmarks.}
+We evaluate on three interactive benchmarks requiring multi-step reasoning with cross-task memory accumulation:
+\textbf{ALFWorld}~\citep{shridhar2021alfworld} (134 household tasks across 6 types: put, clean, heat, cool, examine, puttwo),
+\textbf{PDDL Planning} (100 classical planning tasks: blocksworld, barman, gripper, tyreworld), and
+\textbf{ScienceWorld}~\citep{wang2022scienceworld} (100 science experiment tasks).
+
+\paragraph{Agent frameworks.}
+To demonstrate framework-agnostic generality, we evaluate with three diverse agent architectures:
+\textbf{Lobster} (single-agent, direct OpenAI API),
+\textbf{LangGraph} (multi-agent graph workflow via LangChain), and
+\textbf{Agent-Framework} (Microsoft's multi-agent pipeline).
+
+\paragraph{Memory baselines.}
+\textbf{(1) No memory} (empty): agent has no cross-task memory.
+\textbf{(2) G-Memory}~\citep{gmemory}: graph-based memory with Chroma vector store, NetworkX task graph (k-hop retrieval), and scored insight rules with periodic LLM-driven merge.
+\textbf{(3) \ours}: G-Memory as inner backend, wrapped with our learned policy controller.
+
+\paragraph{Model and hyperparameters.}
+All experiments use \texttt{gpt-4.1-mini} with 30 max steps per task.
+\ours uses $\alpha\!=\!0.15$, $\gamma\!=\!0.9$, $c\!=\!1.4$, warm-start enabled.
+We report single-run results (no seed averaging) to reflect realistic deployment.
+
+
+\subsection{Main Results: Interactive Benchmarks}
+
+
+
+\begin{table*}[t]
+\centering
+\caption{Overall performance across interactive and QA benchmarks. Succ./Acc. = success rate or accuracy (\%). Tok/T = average tokens per task. $\Delta$ is improvement over G-Memory. \textbf{Bold}: best per row.}
+\label{tab:combined-results}
+\small
+\resizebox{\textwidth}{!}{
+\begin{tabular}{ll ccc ccc ccc ccc ccc ccc}
+\toprule
+& & \multicolumn{9}{c}{\textbf{Interactive Benchmarks}} & \multicolumn{9}{c}{\textbf{QA Benchmarks}} \\
+\cmidrule(lr){3-11} \cmidrule(lr){12-20}
+& & \multicolumn{3}{c}{\textbf{ALFWorld}} 
+  & \multicolumn{3}{c}{\textbf{PDDL}} 
+  & \multicolumn{3}{c}{\textbf{SciWorld}}
+  & \multicolumn{3}{c}{\textbf{TriviaQA}} 
+  & \multicolumn{3}{c}{\textbf{WebWalkerQA}}
+  & \multicolumn{3}{c}{\textbf{GAIA}} \\
+\cmidrule(lr){3-5} \cmidrule(lr){6-8} \cmidrule(lr){9-11} \cmidrule(lr){12-14} \cmidrule(lr){15-17} \cmidrule(lr){18-20}
+\textbf{Framework} & \textbf{Memory} 
+& S/A & Tok & $\Delta$ 
+& S/A & Tok & $\Delta$ 
+& S/A & Tok & $\Delta$
+& S/A & Tok & $\Delta$
+& S/A & Tok & $\Delta$
+& S/A & Tok & $\Delta$ \\
+\midrule
+
+\multirow{3}{*}{Lobster}
+& Empty 
+& 35.8 & 47K & -- & 40.0 & 46K & -- & 43.0 & 44K & --
+& \textbf{69.5} & 57 & -- & 17.8 & 154 & --
+& 20.0 & 394 & -- \\
+& G-Memory 
+& 62.7 & 41K & -- & 68.0 & 40K & -- & \textbf{73.0} & 36K & --
+& 66.0 & 262 & -- & 18.6 & 360 & --
+& 21.6 & 703 & -- \\
+& \ours 
+& \textbf{67.2} & \textbf{39K} & \cellcolor{mygreen}+4.5 
+& \textbf{72.0} & \textbf{36K} & \cellcolor{mygreen}+4.0 
+& 66.0 & \textbf{38K} & -7.0
+& \textbf{69.5} & \textbf{208} & \cellcolor{mygreen}+3.5 
+& \textbf{21.2} & \textbf{341} & \cellcolor{mygreen}+2.6
+& \textbf{24.4} & \textbf{575} & \cellcolor{mygreen}+2.8 \\
+\midrule
+
+\multirow{3}{*}{LangGraph}
+& Empty 
+& 35.1 & 47K & -- & 35.0 & 47K & -- & 36.0 & 46K & --
+& \textbf{68.5} & 57 & -- & 18.5 & 157 & --
+& 18.2 & 393 & -- \\
+& G-Memory 
+& 64.2 & 48K & -- & 64.0 & 43K & -- & 69.0 & 37K & --
+& 67.5 & 265 & -- & \textbf{21.2} & 424 & --
+& 23.3 & 683 & -- \\
+& \ours 
+& \textbf{67.2} & \textbf{40K} & \cellcolor{mygreen}+3.0 
+& \textbf{75.0} & \textbf{34K} & \cellcolor{mygreen}+11.0 
+& \textbf{75.0} & \textbf{36K} & \cellcolor{mygreen}+6.0
+& 66.5 & \textbf{195} & -1.0 
+& 20.2 & \textbf{337} & -1.0
+& \textbf{27.3} & \textbf{598} & \cellcolor{mygreen}+4.0 \\
+\midrule
+
+\multirow{3}{*}{Agent-FW}
+& Empty 
+& 45.5 & 46K & -- & 54.0 & 44K & -- & 63.0 & 41K & --
+& \textbf{69.0} & 57 & -- & \textbf{19.4} & 155 & --
+& 20.0 & 403 & -- \\
+& G-Memory 
+& \textbf{66.4} & 43K & -- & 73.0 & 39K & -- & 73.0 & 37K & --
+& 68.0 & 263 & -- & 19.2 & 397 & --
+& 23.4 & 686 & -- \\
+& \ours 
+& 65.7 & \textbf{44K} & -0.7 
+& \textbf{74.0} & \textbf{35K} & \cellcolor{mygreen}+1.0 
+& 73.0 & \textbf{41K} & 0.0
+& 68.5 & \textbf{187} & \cellcolor{mygreen}+0.5 
+& 19.0 & \textbf{348} & -0.2
+& \textbf{29.2} & \textbf{543} & \cellcolor{mygreen}+5.8 \\
+\bottomrule
+
+\end{tabular}
+}
+\end{table*}
+
+
+
+
+\bibliography{references}
+\bibliographystyle{colm2024_conference}
+
+\end{document}
