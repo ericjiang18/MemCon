@@ -215,7 +215,6 @@ python hmf/alfworld_runners/run_full_experiment.py --all
 ├── lobster/                         # Lobster framework (vendored)
 ├── agent-framework/                 # MS Agent Framework (vendored)
 ├── data/                            # Benchmark datasets
-├── method.tex                       # Paper methodology
 └── scripts/                         # Run scripts
 ```
 
