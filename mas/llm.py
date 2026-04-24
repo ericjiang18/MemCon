@@ -29,8 +29,8 @@ MAX_TOKEN = LLM_CONFIG.get("max_token", 512)
 TEMPERATURE = LLM_CONFIG.get("temperature", 0.1)
 NUM_COMPS = LLM_CONFIG.get("num_comps", 1)
 
-URL = os.environ.get("OPENAI_API_BASE", "")
-KEY = os.environ.get("OPENAI_API_KEY", "")
+URL = os.environ.get("OPENAI_API_BASE", "http://localhost:4001/v1")
+KEY = os.environ.get("OPENAI_API_KEY", "sk-placeholder")
 print('# api url: ', URL)
 print('# api key: ', KEY)
 

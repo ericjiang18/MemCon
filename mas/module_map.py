@@ -53,6 +53,18 @@ def module_map(
         'amc': None,
         # MemCon (Memory as Controlled Process — paper method)
         'memcon': None,
+        # External baselines
+        'g-memory-orig': None,
+        'gm-orig': None,
+        'latentmem': None,
+        # Additional baselines
+        'metagpt': None,
+        'voyager': None,
+        'generative': None,
+        'chatdev': None,
+        'memorybank': None,
+        'oagent': None,
+        'experiencebank': None,
     }
 
     if reasoning not in reasoning_map:
@@ -101,6 +113,69 @@ def module_map(
             _sys.path.insert(0, _rr)
         from hmf.integrations.mas_memcon import MemConMemory
         mas_memory_map[mas_memory] = MemConMemory
+    elif mas_memory in ('g-memory-orig', 'gm-orig'):
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_gmemory_orig import GMemoryOrig
+        mas_memory_map[mas_memory] = GMemoryOrig
+    elif mas_memory == 'latentmem':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_latentmem import LatentMemMemory
+        mas_memory_map[mas_memory] = LatentMemMemory
+    elif mas_memory == 'metagpt':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_metagpt import MetaGPTMemory
+        mas_memory_map[mas_memory] = MetaGPTMemory
+    elif mas_memory == 'voyager':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_voyager import VoyagerMemory
+        mas_memory_map[mas_memory] = VoyagerMemory
+    elif mas_memory == 'generative':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_generative import GenerativeMemory
+        mas_memory_map[mas_memory] = GenerativeMemory
+    elif mas_memory == 'chatdev':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_chatdev import ChatDevMemory
+        mas_memory_map[mas_memory] = ChatDevMemory
+    elif mas_memory == 'memorybank':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_memorybank import MemoryBankMemory
+        mas_memory_map[mas_memory] = MemoryBankMemory
+    elif mas_memory == 'oagent':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_oagent import OAgentMemory
+        mas_memory_map[mas_memory] = OAgentMemory
+    elif mas_memory == 'experiencebank':
+        import sys as _sys, os as _os
+        _rr = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+        if _rr not in _sys.path:
+            _sys.path.insert(0, _rr)
+        from hmf.integrations.mas_experiencebank import ExperienceBankMemory
+        mas_memory_map[mas_memory] = ExperienceBankMemory
 
     return (
         reasoning_map[reasoning],

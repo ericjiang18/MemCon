@@ -58,7 +58,7 @@ class EmbeddingFunc:
 
     def __post_init__(self):
         if self.model_type not in _EMBEDDING_MODEL_CACHE:
-            _EMBEDDING_MODEL_CACHE[self.model_type] = SentenceTransformer(self.model_type)
+            _EMBEDDING_MODEL_CACHE[self.model_type] = SentenceTransformer(self.model_type, device="cpu")
 
         self.func: SentenceTransformer = _EMBEDDING_MODEL_CACHE[self.model_type]
 

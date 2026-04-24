@@ -62,14 +62,17 @@ class MemConWrapper(MASMemoryBase):
         # The wrapped inner backend (G-Memory or any other)
         self._inner: Optional[MASMemoryBase] = None
 
-        # MDP + Policy
+        # MDP + Policy — read config from global_config if available
         self._action_space = MemoryActionSpace()
         self._mdp = MemoryMDP()
+        pc = self.global_config.get("policy_config", {})
         self._policy = MemoryPolicy(
             action_space=self._action_space,
             config=PolicyConfig(
-                learning_rate=0.15,
-                ucb_c=1.4,
+                learning_rate=pc.get("learning_rate", 0.15),
+                ucb_c=pc.get("ucb_c", 1.4),
+                discount=pc.get("discount", 0.9),
+                warm_start=pc.get("warm_start", True),
                 persist_path=os.path.join(memcon_dir, "policy_q.json"),
             ),
         )

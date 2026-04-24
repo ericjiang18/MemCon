@@ -27,11 +27,10 @@ sys.path.insert(0, os.path.join(_REPO, "tasks"))
 sys.path.insert(0, os.path.join(_REPO, "agent_baseline"))
 os.chdir(_REPO)
 
-from dotenv import load_dotenv
-load_dotenv()
+# env vars are set by run.sh / rerun_missing.sh
 
-API_KEY = os.environ.get("OPENAI_API_KEY", "")
-API_BASE = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+API_KEY = os.environ.get("OPENAI_API_KEY", "sk-placeholder")
+API_BASE = os.environ.get("OPENAI_API_BASE", "http://localhost:4001/v1")
 MODEL = os.environ.get("LLM_MODEL", "gpt-5-mini")
 os.environ.setdefault("ALFWORLD_DATA", os.path.expanduser("~/.cache/alfworld"))
 
@@ -39,7 +38,7 @@ INTERACTIVE_BENCHMARKS = ["alfworld", "sciworld", "pddl"]
 QA_BENCHMARKS = ["humaneval", "aime_2025", "beyond_aime", "hmmt_feb_2025", "hle"]
 ALL_BENCHMARKS = INTERACTIVE_BENCHMARKS + QA_BENCHMARKS
 FRAMEWORKS = ["lobster", "langgraph", "agent_framework"]
-MEMORIES = ["memcon", "g-memory", "empty"]
+MEMORIES = ["memcon", "g-memory", "latentmem", "empty"]
 
 
 def get_runner(framework: str):
@@ -54,6 +53,24 @@ def get_runner(framework: str):
         from hmf.alfworld_runners.agent_framework_runner import AgentFrameworkALFWorld
         return AgentFrameworkALFWorld(**kwargs)
     raise ValueError(f"Unknown framework: {framework}")
+
+
+_BEST_POLICY_PATH = os.path.join(_REPO, "configs", "best_memcon_policy.json")
+
+
+def _load_best_policy_config() -> dict:
+    """Load tuned MemCon policy config if available."""
+    if os.path.exists(_BEST_POLICY_PATH):
+        try:
+            with open(_BEST_POLICY_PATH) as f:
+                data = json.load(f)
+            pc = data.get("policy_config", {})
+            if pc:
+                print(f"  [MemCon] Using tuned policy: {pc}")
+                return pc
+        except Exception:
+            pass
+    return {}
 
 
 def get_memory(memory_name: str, framework: str, benchmark: str = ""):
@@ -72,9 +89,17 @@ def get_memory(memory_name: str, framework: str, benchmark: str = ""):
     working_dir = os.path.join(".db", MODEL.replace("/", "_"), f"exp_{framework}_{memory_name}{suffix}")
     os.makedirs(working_dir, exist_ok=True)
 
+    global_config = {"working_dir": working_dir, "hop": 1}
+
+    # Auto-load tuned policy config for MemCon
+    if memory_name == "memcon":
+        pc = _load_best_policy_config()
+        if pc:
+            global_config["policy_config"] = pc
+
     return mem_cls(
         namespace=memory_name,
-        global_config={"working_dir": working_dir, "hop": 1},
+        global_config=global_config,
         llm_model=llm,
         embedding_func=embed,
     )
@@ -289,14 +314,29 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
         else:
             params["max_tokens"] = 4096
 
-        try:
-            resp = client.chat.completions.create(**params)
-            text = resp.choices[0].message.content or ""
-            pt = resp.usage.prompt_tokens or 0
-            ct = resp.usage.completion_tokens or 0
-        except Exception as e:
-            text = f"ERROR: {e}"
-            pt = ct = 0
+        text, pt, ct = "", 0, 0
+        for _attempt in range(5):
+            try:
+                resp = client.chat.completions.create(**params)
+                text = resp.choices[0].message.content or ""
+                pt = resp.usage.prompt_tokens or 0
+                ct = resp.usage.completion_tokens or 0
+                break
+            except Exception as e:
+                err_str = str(e).lower()
+                is_retryable = any(k in err_str for k in (
+                    "security token", "expired", "400", "403", "404", "500", "502", "503",
+                    "rate limit", "throttl", "timeout", "connection", "legacy", "invalid model",
+                ))
+                if is_retryable and _attempt < 4:
+                    import time as _time
+                    delay = 5 * (2 ** _attempt)
+                    print(f"    [RETRY {_attempt+1}/5] {type(e).__name__}: {str(e)[:80]}... waiting {delay}s")
+                    _time.sleep(delay)
+                else:
+                    text = f"ERROR: {e}"
+                    pt = ct = 0
+                    break
 
         total_pt += pt
         total_ct += ct
@@ -402,14 +442,21 @@ def _run_qa_simple(benchmark: str, memory_name: str, out_dir: str, framework: st
 
 
 def main():
+    global MODEL
     parser = argparse.ArgumentParser()
     parser.add_argument("--benchmark", type=str, default=None)
     parser.add_argument("--framework", type=str, default=None)
     parser.add_argument("--memory", type=str, default=None)
+    parser.add_argument("--model", type=str, default=None,
+                        help="Override LLM_MODEL env var")
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
 
-    out_dir = f"results/full_experiment_{MODEL.replace('/', '_')}"
+    if args.model:
+        MODEL = args.model
+        os.environ["LLM_MODEL"] = MODEL
+
+    out_dir = f"results/exp_{MODEL.replace('/', '_')}"
     os.makedirs(out_dir, exist_ok=True)
 
     if args.all:
