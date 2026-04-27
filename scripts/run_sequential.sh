@@ -41,7 +41,7 @@ LOGDIR="$RESULT_DIR/logs"
 mkdir -p "$LOGDIR"
 
 ALL_FRAMEWORKS=(lobster langgraph agent_framework)
-ALL_MEMORIES=(metagpt voyager generative chatdev memorybank oagent experiencebank) # empty g-memory memcon latentmem 
+ALL_MEMORIES=(empty metagpt voyager generative chatdev memorybank oagent experiencebank) # empty g-memory memcon latentmem 
 ALL_BENCHMARKS=(triviaqa webwalkerqa gaia pddl sciworld alfworld)
 
 # Parse args
@@ -70,7 +70,7 @@ done
 
 # If -b, relaunch in background
 if $background; then
-    bg_log="$PROJECT_DIR/run_sequential_$(date +%Y%m%d_%H%M%S).log"
+    bg_log="$PROJECT_DIR/run_sequential_${MEM_FILTER:-all}_$(date +%Y%m%d_%H%M%S).log"
     echo ">>> Launching in background. Log: $bg_log"
     MODEL="$MODEL" API="$API" nohup "$0" "${args_for_relaunch[@]}" > "$bg_log" 2>&1 &
     echo ">>> PID: $!"

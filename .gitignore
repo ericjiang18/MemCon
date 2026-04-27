@@ -17,10 +17,15 @@ data/fever/
 data/pddl/
 data/ScreenSpot-Pro/
 
-# Experiment outputs (regenerable)
-results/
+# Experiment logs (not results)
+results/*/logs/
+*.log
 nohup.out
+results/*
 
+.venv 
+
+latex
 # Vendored frameworks — included in repo for reproducibility
 # (can also install via pip: langchain-openai langgraph agent-framework-core)
 

@@ -106,6 +106,34 @@ class ALFWorldRunner(ABC):
         """Return (text, prompt_tokens, completion_tokens)."""
         ...
 
+    def generate_with_retry(self, system_prompt: str, user_prompt: str,
+                            max_retries: int = 5, base_delay: float = 5.0) -> Tuple[str, int, int]:
+        """Wrapper around generate() with retry + exponential backoff.
+
+        Handles transient API errors (403 expired tokens, 500 server errors,
+        rate limits) so a single bad AWS account doesn't kill the whole run.
+        """
+        import time as _time
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                return self.generate(system_prompt, user_prompt)
+            except Exception as e:
+                last_err = e
+                err_str = str(e).lower()
+                # Retry on auth/server/rate errors; raise immediately on others
+                is_retryable = any(k in err_str for k in (
+                    "security token", "expired", "400", "403", "404", "500", "502", "503",
+                    "rate limit", "throttl", "timeout", "connection", "legacy", "invalid model",
+                ))
+                if not is_retryable:
+                    raise
+                delay = base_delay * (2 ** attempt)
+                print(f"    [RETRY {attempt+1}/{max_retries}] {type(e).__name__}: "
+                      f"{str(e)[:100]}... waiting {delay:.0f}s")
+                _time.sleep(delay)
+        raise last_err
+
     def run_alfworld(
         self,
         memory_backend,
@@ -196,7 +224,7 @@ class ALFWorldRunner(ABC):
                 if consecutive_thinks >= MAX_CONSECUTIVE_THINKS:
                     step_prompt += "\n\n[SYSTEM] You MUST output a physical action NOW."
 
-                response, pt, ct = self.generate(full_system, step_prompt)
+                response, pt, ct = self.generate_with_retry(full_system, step_prompt)
                 task_tokens.add(pt, ct)
                 self.token_tracker.add(pt, ct)
 

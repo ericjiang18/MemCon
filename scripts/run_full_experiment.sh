@@ -1,41 +1,56 @@
 #!/usr/bin/env bash
 #
-# Full experiment: 3 frameworks × 3 memories × 9 benchmarks = 81 runs
-# Uses gpt-5-mini. Launches in parallel batches.
+# Full experiment suite via LiteLLM proxy (multi-AWS Bedrock).
+# 3 frameworks x 5 memories x N benchmarks
+#
+# Prerequisites:
+#   1. source /home/ubuntu/workplace/0SysExp/source_all_bedrock_accounts.sh
+#   2. Start LiteLLM proxy:
+#      cd /home/ubuntu/workplace/AI-Scientist-v2
+#      nohup .venv/bin/litellm --config /home/ubuntu/workplace/MemCon/litellm_config.yaml \
+#            --port 4000 --num_workers 16 > /home/ubuntu/workplace/MemCon/litellm_proxy.log 2>&1 &
+#
+# Or simply: ./scripts/run.sh setup
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-export PATH="/local3/ericjiang/miniconda3/bin:$PATH"
-source activate hmf
-
-source .env 2>/dev/null || true
-export OPENAI_API_KEY="${OPENAI_API_KEY:?Set OPENAI_API_KEY}"
-export OPENAI_API_BASE="${OPENAI_API_BASE:-https://api.openai.com/v1}"
-export LLM_MODEL="gpt-5-mini"
-export ALFWORLD_DATA="${HOME}/.cache/alfworld"
+# ── LiteLLM proxy configuration ─────────────────────────────────────────────
+export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:4000/v1}"
+export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-placeholder}"
+export LLM_MODEL="${LLM_MODEL:-gpt-4.1-mini}"
+export ALFWORLD_DATA="${ALFWORLD_DATA:-${HOME}/.cache/alfworld}"
 export PYTHONPATH="$(pwd):$(pwd)/agent_baseline:$(pwd)/tasks:${PYTHONPATH:-}"
 
-OUTDIR="results/full_experiment_gpt-5-mini"
+OUTDIR="results/exp_${LLM_MODEL//\//_}_$(date +%Y%m%d)"
 LOGDIR="$OUTDIR/logs"
 mkdir -p "$LOGDIR"
 
 FRAMEWORKS=(lobster langgraph agent_framework)
-MEMORIES=(memcon g-memory empty)
+MEMORIES=(memcon g-memory latentmem empty)
 
-# Interactive benchmarks (sequential per framework to avoid env conflicts)
+# Interactive benchmarks
 INTERACTIVE=(alfworld pddl sciworld)
-
-# QA benchmarks (can run in parallel freely)
+# QA benchmarks
 QA_BENCHMARKS=(humaneval aime_2025 beyond_aime hmmt_feb_2025 hle)
 
 echo "=============================================="
-echo "  Full Experiment Suite — gpt-5-mini"
+echo "  MemCon Full Experiment Suite"
+echo "  Model:      $LLM_MODEL"
+echo "  API Base:   $OPENAI_API_BASE"
 echo "  Frameworks: ${FRAMEWORKS[*]}"
 echo "  Memories:   ${MEMORIES[*]}"
 echo "  Benchmarks: ${INTERACTIVE[*]} ${QA_BENCHMARKS[*]}"
 echo "  Output:     $OUTDIR"
 echo "=============================================="
+
+# Verify proxy is running
+if ! curl -s "http://localhost:4000/health" >/dev/null 2>&1; then
+    echo "[ERROR] LiteLLM proxy not running on port 4000."
+    echo "Run: ./scripts/run.sh setup"
+    exit 1
+fi
+echo ">>> LiteLLM proxy: OK"
 
 # ── Launch QA benchmarks (all in parallel) ──
 echo ""
@@ -52,7 +67,7 @@ for BENCH in "${QA_BENCHMARKS[@]}"; do
     done
 done
 
-# ── Launch interactive benchmarks (parallel per framework×memory, sequential tasks) ──
+# ── Launch interactive benchmarks (parallel per framework x memory) ──
 echo ""
 echo ">>> Launching interactive benchmarks..."
 for BENCH in "${INTERACTIVE[@]}"; do
@@ -71,4 +86,5 @@ TOTAL=$(jobs -p | wc -l)
 echo ""
 echo ">>> $TOTAL experiments launched!"
 echo ">>> Monitor: tail -f $LOGDIR/*.log"
-echo ">>> Check:   grep -l 'ERROR' $LOGDIR/*.log"
+echo ">>> Errors:  grep -l 'ERROR\|Traceback' $LOGDIR/*.log"
+echo ">>> Status:  ./scripts/run.sh status"
