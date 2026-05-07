@@ -5,42 +5,6 @@
 
 **MemCon** models agent memory operations as a Markov Decision Process and learns an online policy to control *when*, *what*, and *how much* to retrieve, encode, consolidate, and forget. It is **backend-agnostic** — wrapping any existing memory system and learning to use it better through task feedback, with zero pretraining and zero additional LLM calls.
 
-## Key Results
-
-### Interactive Benchmarks (gpt-4.1-mini)
-
-MemCon consistently outperforms G-Memory across **3 frameworks × 3 benchmarks**, while using **5–18% fewer tokens**.
-
-| Framework | Memory | ALFWorld | PDDL | SciWorld |
-|-----------|--------|----------|------|----------|
-| **Lobster** | Empty | 35.8% | 40.0% | 43.0% |
-| | G-Memory | 62.7% | 68.0% | **73.0%** |
-| | **MemCon** | **67.2%** | **72.0%** | 66.0% |
-| **LangGraph** | Empty | 35.1% | 35.0% | 36.0% |
-| | G-Memory | 64.2% | 64.0% | 69.0% |
-| | **MemCon** | **67.2%** | **75.0%** *(+11)* | **75.0%** *(+6)* |
-| **Agent-FW** | Empty | 45.5% | 54.0% | 63.0% |
-| | G-Memory | **66.4%** | 73.0% | 73.0% |
-| | **MemCon** | 65.7% | **74.0%** | 73.0% |
-
-
-### QA Benchmarks (gpt-4.1-mini)
-
-MemCon achieves comparable or higher accuracy than G-Memory while using **15–20% fewer tokens** per task.
-
-| Framework | Memory | TriviaQA | Tok/T | WebWalkerQA | Tok/T | GAIA | Tok/T |
-|-----------|--------|----------|-------|-------------|-------|------|-------|
-| **Lobster** | Empty | 69.5% | 57 | 17.8% | 154 | 20.0% | 394 |
-| | G-Memory | 66.0% | 262 | 18.6% | 360 | 21.6% | 703 |
-| | **MemCon** | **69.5%** | **208** | **21.2%** *(+2.6)* | **341** | **24.4%** *(+2.8)* | **575** |
-| **LangGraph** | Empty | **68.5%** | 57 | 18.5% | 157 | 18.2% | 393 |
-| | G-Memory | 67.5% | 265 | **21.2%** | 424 | 23.3% | 683 |
-| | **MemCon** | 66.5% | **195** | 20.2% | **337** | **27.3%** *(+4.0)* | **598** |
-| **Agent-FW** | Empty | **69.0%** | 57 | **19.4%** | 155 | 20.0% | 403 |
-| | G-Memory | 68.0% | 263 | 19.2% | 397 | 23.4% | 686 |
-| | **MemCon** | 68.5% | **187** | 19.0% | **348** | **29.2%** *(+5.8)* | **543** |
-
-
 ## How It Works
 
 ```
